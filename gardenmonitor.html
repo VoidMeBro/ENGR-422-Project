@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="light">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -20,21 +20,21 @@
 
 <body class="main-bg transition-all duration-500">
 
-<header class="flex justify-between items-center px-16 py-5 bg-white dark:bg-[#1e293b] shadow-sm">
-
+<header class="flex justify-between items-center px-16 py-5 bg-white border-b border-gray-200">
   <div class="flex items-center gap-10">
-    <h2 class="text-xl font-extrabold text-green-500">🌱 Garden Monitor</h2>
+    <h2 class="text-xl font-extrabold text-gray-800">
+      🌱 <span class="text-green-500">Garden</span> Monitor
+    </h2>
     <input type="text"
+    id="searchInput"
       placeholder="Search plants..."
       class="search-bar">
   </div>
 
   <div class="flex items-center gap-6">
-    <button id="darkToggle" class="toggle-btn">
-      🌙
-    </button>
-   
-  </div>
+  <button id="darkToggle" class="toggle-btn">🌙</button>
+  <button id="menuToggle" class="toggle-btn text-green-600 font-bold">☰</button>
+</div>
 </header>
 
 <main class="px-16 py-10">
@@ -44,7 +44,7 @@
       <h1 class="title">Welcome back, Gardener! 🌱</h1>
       <p class="subtitle">Your green friends are doing great today.</p>
     </div>
-    <button class="primary-btn">+ Add New Plant</button>
+    <button id="addPlantBtn" class="primary-btn">+ Add New Plant</button>
   </div>
  
   <div class="grid grid-cols-4 gap-6 mb-10">
@@ -67,36 +67,85 @@
     </div>
 
     <div class="stat-card">
-      <p class="stat-title">Active Plants</p>
-      <h2 class="stat-value">12</h2>
+  <p class="stat-title">Active Plants</p>
+  <h2 class="stat-value" id="activePlantsCount">0</h2>
     </div>
   </div>
 
-  <div class="grid grid-cols-3 gap-8">
-    <div class="col-span-2 chart-card">
-      <h2 class="section-title">Growth Monitoring</h2>
-      <canvas id="growthChart"></canvas>
+ <div class="grid grid-cols-3 gap-8" id="plantsContainer">
+
+  <div class="alerts-card">
+    <h2 class="section-title mb-4">Alerts</h2>
+
+    <div class="alert orange searchable-item">
+      <p class="alert-title">Time to Water!</p>
+      <p>The Tomato patch soil is dry.</p>
     </div>
-   
-    <div class="alerts-card">
-      <h2 class="section-title">Alerts</h2>
 
-      <div class="alert orange">
-        <p class="alert-title">Time to Water!</p>
-        <p>The Tomato patch soil is dry.</p>
-      </div>
+    <div class="alert yellow searchable-item">
+      <p class="alert-title">More Sunshine</p>
+      <p>The Fern needs indirect light.</p>
+    </div>
 
-      <div class="alert yellow">
-        <p class="alert-title">More Sunshine</p>
-        <p>The Fern needs indirect light.</p>
-      </div>
-
-      <div class="alert green">
-        <p class="alert-title">Daily Goal Met</p>
-        <p>All plants received nutrients.</p>
-      </div>
+    <div class="alert green searchable-item">
+      <p class="alert-title">Daily Goal Met</p>
+      <p>All plants received nutrients.</p>
     </div>
   </div>
+
+  <div class="col-span-2 space-y-8">
+
+    <div class="chart-card p-6 relative">
+ 
+  <div class="flex gap-4 mb-4">
+   <button class="chart-tab-btn bg-green-500 text-white px-4 py-2 rounded font-semibold active" data-chart="moisture">Soil Moisture</button>
+    <button class="chart-tab-btn bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white px-4 py-2 rounded font-semibold" data-chart="ec">Electroconductivity</button>
+    <button class="chart-tab-btn bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white px-4 py-2 rounded font-semibold" data-chart="humidity">Humidity</button>
+  </div>
+
+  <canvas id="chartCanvas"></canvas>
+</div>
+
+    <div class="grid grid-cols-2 gap-6" id="plantsContainer">
+
+  <div class="stat-card plant-item searchable-item relative">
+    <h3 class="font-bold text-lg">🍅 Tomato</h3>
+    <p>Needs watering daily</p>
+    <button class="delete-btn absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold">✖</button>
+  </div>
+
+  <div class="stat-card plant-item searchable-item relative">
+    <h3 class="font-bold text-lg">🌿 Fern</h3>
+    <p>Prefers indirect sunlight</p>
+    <button class="delete-btn absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold">✖</button>
+  </div>
+
+  <div class="stat-card plant-item searchable-item relative">
+    <h3 class="font-bold text-lg">🌻 Sunflower</h3>
+    <p>Thrives in full sun</p>
+    <button class="delete-btn absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold">✖</button>
+  </div>
+
+</div>
+
+<div id="addPlantModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+  <div class="bg-white p-8 rounded-2xl w-96 shadow-lg relative">
+   <h2 class="text-xl font-bold mb-4 text-gray-800">Add New Plant 🌱</h2>
+
+<label class="block mb-2 text-gray-700">Plant Name</label>
+<input type="text" id="modalPlantName" class="w-full mb-4 p-2 rounded border border-gray-300">
+
+<label class="block mb-2 text-gray-700">Short Description</label>
+<input type="text" id="modalPlantDesc" class="w-full mb-4 p-2 rounded border border-gray-300">
+
+    <div class="flex justify-end gap-4">
+      <button id="modalCancel" class="px-4 py-2 rounded bg-green-500 text-white hover:bg-green-600">Cancel</button>
+      <button id="modalAdd" class="px-4 py-2 rounded bg-green-500 text-white hover:bg-green-600">Add</button>
+    </div>
+    
+    <button id="modalClose" class="absolute top-3 right-3 text-gray-500 hover:text-gray-700 dark:hover:text-white">✖</button>
+  </div>
+</div>
 
 </main>
 
@@ -115,26 +164,41 @@
     <div class="footer-links">
       <div>
         <h4>Product</h4>
-        <a href="#">Dashboard</a>
-        <a href="#">My Plants</a>
-        <a href="#">Devices</a>
+        <a href="#">Garden Monitor</a>
+        <a href="#"></a>
+        <a href="#"></a>
       </div>
 
       <div>
         <h4>Support</h4>
-        <a href="#">Help Center</a>
-        <a href="#">Privacy Policy</a>
         <a href="#">Terms of Service</a>
       </div>
     </div>
 
   </div>
 
-  <div class="footer-bottom">
-    © 2026 Garden Monitor. All rights reserved.
-  </div>
+ <div class="footer-bottom">
+  © <span id="currentYear"></span> Garden Monitor. All rights reserved.
+</div>
 
 </footer>
+<div id="rightSidebar"
+     class="fixed top-0 right-0 h-full w-64 bg-white dark:bg-white shadow-xl transform translate-x-full transition-transform duration-300 z-50 border-l border-green-200">
+
+     <div class="p-6 flex justify-between items-center border-b border-green-200">
+    <h2 class="text-lg font-bold text-green-700">Menu</h2>
+    <button id="sidebarClose" class="text-green-600 hover:text-green-800 font-bold text-xl">✖</button>
+  </div>
+  
+<nav class="mt-6 flex flex-col gap-4">
+  <a href="#" class="px-4 py-2 rounded hover:bg-green-100 text-green-700 font-medium transition-colors">Dashboard</a>
+  <a href="#" class="px-4 py-2 rounded hover:bg-green-100 text-green-700 font-medium transition-colors">My Plants</a>
+  <a href="#" class="px-4 py-2 rounded hover:bg-green-100 text-green-700 font-medium transition-colors">Devices</a>
+  <a href="#" class="px-4 py-2 rounded hover:bg-green-100 text-green-700 font-medium transition-colors">Help Center</a>
+  <a href="#" class="px-4 py-2 rounded hover:bg-green-100 text-green-700 font-medium transition-colors">Settings</a>
+</nav>
+</div>
 <script src="gardenmonitor.js"></script>
+
 </body>
 </html>
