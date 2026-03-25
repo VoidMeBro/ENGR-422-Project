@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="chickenMain.css">
+    <link rel="stylesheet" href="chickenDashboard.css">   
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script type="text/babel" src="hamburger.jsx"></script>
+    <title>Dashboard</title>
+</head>
+<body>
+        <nav class="menu-bar">
+        <h2 class="nav-header">Chicken Management</h2>
+        <ul>
+            <li class="active"><a href="chickenDashboard.html">Dashboard</a></li>
+            <li><a href="coop.html">Coop management</a></li>
+            <li><a href="chicken.html">Chickens</a></li>
+        </ul>
+        <div class="hamburger" id="hamburger"></div>
+        </nav>
+        <main>
+                <h1>Data Analysis Dashboard</h1>
+            <section id = "coop-summary">
+                <article class = "summary">
+                    <p class = "summary-text">Total Chickens:</p>
+                    <p class = "summary-number" id = "chicken-count">0</p>
+                </article>
+                <article class = "summary">
+                    <p class = "summary-text">This Month's Egg Production:</p>
+                    <p class = "summary-number" id = "egg-count">0</p>
+                </article>
+                <article class = "summary">
+                    <p class = "summary-text">This Month's Fertilization Rate:</p>
+                    <p class = "summary-number" id = "fertilization">0</p>
+                </article>
+                <article class = "summary">
+                    <p class = "summary-text">Average Daily Egg Production:</p>
+                    <p class = "summary-number" id = "daily-egg">0</p>
+                </article>
+            </section>
+
+
+            <section id = "chart-container">
+                <article id = "egg-production" class = "chart-section">
+                    <h2 class = "graph-title">Egg Production over the past 7 Days</h2>
+                    <hr class = "graph-hr">
+                    <canvas id="egg-chart"></canvas>
+
+                </article>
+
+                <article id = "predator" class = "chart-section">
+                    <h2 class = "graph-title">Predator Activity Over the past 7 Days</h2>
+                    <hr class = "graph-hr">
+                    <canvas id="predator-chart"></canvas>
+                </article>
+
+                <article id = "movement" class = "chart-section">
+                    <h2 class = "graph-title">Chicken Movement Over the past 7 Days</h2>
+                    <hr class = "graph-hr">
+                    <canvas id="movement-chart"></canvas>
+                </article>
+            </section>
+
+            <section id = "export">
+                <h2>Data Management</h2>
+                <hr class = "graph-hr">
+                <section id="export-buttons">
+                    <button class = "data" id= "download">Export Data as CSV</button>
+                    <button class = "data" id = "clear">Clear All Data</button>
+                </section>
+                
+            </section>
+                    
+            
+        </main>
+    
+
+</body>
+</html>

@@ -1,0 +1,162 @@
+.coop-hr{
+    margin: 1% 0px;
+    border-width: 1px 1px 1px 1px;
+    border-style: solid;
+    color: rgb(31,208,99)
+}
+.coop-text{
+    color: rgb(31,208,99);
+    font-size: large;
+    align-self: center;
+    align-content: center;
+    margin: 3% auto;
+    padding: 0 4%;
+}
+
+
+#top{
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-evenly;
+    margin-bottom: 15px;
+}
+#top section{
+    padding: 2% 2%;
+    border-radius: 20px;
+    display: flex;
+    flex-direction: column;
+}
+#top section button{
+    align-self: center;
+}
+#top section form input, #top section form button, #top section form label{
+    align-self: center;
+}
+
+
+#reminder{
+    background-color: rgb(255,249,196);
+    width: 45%;
+
+}
+#reminder-form{
+    display:flex;
+    flex-direction: column;
+}
+#reminder input, #door input{
+    width: 30%
+}
+#change,#control-door,#reminder-button{
+    padding: 1% 2%;
+    margin-top: 5px;
+    margin-bottom: 5px;
+    width:20%;
+    border: none;
+    border-radius: 5px;
+    background-color: rgb(31,208,99);
+    color: white;
+}
+#collection{
+    background-color: whitesmoke;
+    border-radius: 5px;
+    padding: 2% 2%;
+    margin: 1% 0%;
+    width: 100%;
+    text-align: center;
+    font-size: large;
+    font-weight: bold;
+}
+#door{
+    background-color: rgb(224,247,244);
+    width: 45%;
+}
+#door-status{
+    font-weight: bold;
+    background-color: rgba(255, 0, 0, 60%);
+    border-radius: 5px;
+    padding: 0.5% 1%;
+    margin: 1% 0%;
+    width: 100%;
+    text-align: center;
+    font-size: large;
+}
+#log-poop{
+    width: 93%;
+    margin: 15px auto;
+    padding: 1% 2%;
+    background-color: rgb(255,248,225);
+    border-radius: 20px;
+}
+#poop-form{
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    margin: auto;
+    padding-top: 5px;
+}
+
+#poop-form input, #reminder input,#door-form input{
+    border: none;
+    border-radius: 5px;
+    padding: 5px;
+    margin-bottom: 10px;
+}
+#poop-form label, #reminder label{
+    margin-bottom: 3px;
+}
+
+#log-poop-button{
+    padding: 1%;
+    margin: 5px auto;
+    border: none;
+    border-radius: 10px;
+    background-color: rgb(31,208,99);
+    color: white;
+    font-size: large;
+}
+#steps{
+    width: 93%;
+    margin: 15px auto;
+    background-color: rgb(224,247,244);
+    padding: 1% 2%;
+    border-radius: 20px;
+}
+
+
+@media only screen and (max-width: 1100px) {
+    #collection, #door-status{
+    font-size: 1.3rem;
+    padding: 3px;
+  }
+    #top{
+        flex-direction: column;
+    }
+    #reminder, #door{
+        width: 90%;
+        margin: 10px auto;
+    }
+    .coop-text{
+    font-size: 1.6rem;
+  }
+
+}
+
+@media only screen and (max-width: 600px) {
+        #top{
+            flex-direction: column;
+        }
+        #reminder, #door{
+            width: 90%;
+            margin: 10px auto;
+            padding: 3px;
+        }
+        #collection, #door-status{
+    font-size: 1rem;
+  }
+  .coop-text{
+    font-size: 1.2rem;
+  }
+}
+
+

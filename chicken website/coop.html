@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="chickenMain.css">
+    <link rel="stylesheet" href="coop.css">
+
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script type="text/babel" src="hamburger.jsx"></script>
+    <title>Coop Management</title>
+</head>
+<body>
+    <section id = "coop-page">
+        <nav class="menu-bar">
+            <h2 class="nav-header">Chicken Management</h2>
+            <ul>
+                <li><a href="chickenDashboard.html">Dashboard</a></li>
+                <li class="active"><a href="coop.html">Coop management</a></li>
+                <li><a href="chicken.html">Chickens</a></li>
+            </ul>
+            <div class="hamburger" id="hamburger"></div>
+        </nav>
+    
+        <main>
+            <section id = "top">
+                <section id = "reminder">
+                    <p class = "coop-text">Daily Reminder</p>
+                    <hr class="coop-hr">
+                    <p id="collection">Remember to collect droppings at </p>
+                    <hr class="coop-hr">
+                    <form id="reminder-form">
+                        <label for="reminder-time" >Set Reminder Time:</label>
+                    <section>
+                        <input type="date" name="reminder-date" id="reminder-date" required>
+                        <input type="time" name="reminder-time" id="reminder-time" required>
+                    </section>
+                    
+                    <label for="reminder-period" >Set Reminder Period Days:</label>
+                    <input type="number" name="reminder-period" id="reminder-period" required>
+                    <button id="reminder-button" type="submit">Set Reminder</button>
+                    </form>
+                </section>
+                    
+                <section id = "door">
+                    <p class = "coop-text">Door Status</p>
+                    <hr class="coop-hr">
+                    <p id = "door-status" class = "open">Door Open!</p>
+                    <hr class="coop-hr">
+                    <button id = "control-door">Close Door</button>
+                    <form id = "door-form">
+                        <section class = "set-time">
+                            <label for="open">Door Opens</label>
+                            <input type="time" name="open" id="open" required>
+                        </section>
+                        <section class = "set-time">
+                            <label for="close">Door Closes</label>
+                            <input type="time" name="close" id="close" required>
+                        </section>
+                        <section>
+                            <button id = "change" type="submit">Change Time</button> 
+                        </section>
+                        
+                    </form>
+                    
+                </section>
+            </section>
+            
+            <section id = "log-poop">
+                <p class = "coop-text">Log Droppings Collection</p>
+                <hr class="coop-hr">
+                <form id = "poop-form">
+                    <label for="collect-date">Date Collected:</label>
+                    <input type="date" name="collect-date" id="collect-date">
+                    <label for="quantity">Quantity Collected (kg):</label>
+                    <input type="number" name="quantity" id="quantity">
+                    <button type="submit" id = "log-poop-button">Log Collection</button>
+                </form>
+            </section>
+
+            <section id = "steps">
+                <p class = "coop-text">Fertiliser Instructions:</p>
+                <hr class="coop-hr">
+                
+            </section>
+        </main>
+    </section>
+</body>
+</html>
