@@ -1,0 +1,38 @@
+import { createBrowserRouter } from "react-router";
+import { Layout } from "./components/Layout";
+import { PublicLanding } from "./screens/hub-tile/PublicLanding";
+import { Dashboard } from "./screens/hub-tile/Dashboard";
+import { Login } from "./screens/hub-tile/Login";
+import { Register } from "./screens/hub-tile/Register";
+import { PowerGeneration } from "./screens/power-tile/PowerGeneration";
+import { ChickenCoop } from "./screens/coop-tile/ChickenCoop";
+import { CropFarm } from "./screens/crop-tile/CropFarm";
+import { WaterDistribution } from "./screens/water-tile/WaterDistribution";
+import { NotFound } from "./screens/hub-tile/NotFound";
+
+export const router = createBrowserRouter([
+  {
+    path: "/",
+    Component: PublicLanding,
+  },
+  {
+    path: "/login",
+    Component: Login,
+  },
+  {
+    path: "/register",
+    Component: Register,
+  },
+  {
+    path: "/dashboard",
+    Component: Layout,
+    children: [
+      { index: true, Component: Dashboard },
+      { path: "power-generation", Component: PowerGeneration },
+      { path: "chicken-coop", Component: ChickenCoop },
+      { path: "crop-farm", Component: CropFarm },
+      { path: "water-distribution", Component: WaterDistribution },
+      { path: "*", Component: NotFound },
+    ],
+  },
+]);
