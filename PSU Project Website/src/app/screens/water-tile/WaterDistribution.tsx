@@ -1,416 +1,720 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
-import { Droplets, Gauge, TrendingDown, AlertTriangle, Activity, Waves } from "lucide-react";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
+import { useState, useEffect, useCallback } from "react";
+import { LineChart, Line, XAxis,YAxis,CartesianGrid,Tooltip,ResponsiveContainer,Legend} from "recharts";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
-import { useIsMobile } from "../../components/ui/use-mobile";
+import { Button } from "../../components/ui/button";
+import {
+  Droplets,
+  Activity,
+  RefreshCw,
+  Wifi,
+  WifiOff,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle,
+  Waves,
+} from "lucide-react";
 
-// Mock data
-const waterUsage = [
-  { hour: "00:00", usage: 45 },
-  { hour: "04:00", usage: 35 },
-  { hour: "08:00", usage: 85 },
-  { hour: "12:00", usage: 120 },
-  { hour: "16:00", usage: 95 },
-  { hour: "20:00", usage: 110 },
-  { hour: "23:59", usage: 55 },
-];
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-const reservoirLevels = [
-  { date: "Feb 26", main: 65, backup: 85 },
-  { date: "Feb 27", main: 62, backup: 83 },
-  { date: "Feb 28", main: 58, backup: 82 },
-  { date: "Mar 1", main: 55, backup: 80 },
-  { date: "Mar 2", main: 53, backup: 78 },
-  { date: "Mar 3", main: 52, backup: 76 },
-];
+interface WaterSensorReading {
+  waterSensorReadingId: number;
+  nodeId: number;
+  deviceId: number;
+  takenAt: string;
+  depthLevelCm: number;
+  turbidityNtu: number;
+  // NOTE FOR DB ARCHITECT: Replace single flowRateMlPerSec with these two columns:
+  flowRateValve1MlPerSec: number;
+  flowRateValve2MlPerSec: number;
+  notes: string | null;
+}
 
-const flowData = [
-  { zone: "Irrigation", flow: 35 },
-  { zone: "Livestock", flow: 20 },
-  { zone: "Processing", flow: 15 },
-  { zone: "Domestic", flow: 12 },
-  { zone: "Reserve", flow: 8 },
-];
+type ValveState = "open" | "closed" | "pending";
 
-export function WaterDistribution() {
-  const isMobile = useIsMobile();
+interface ValveStatus {
+  id: number;
+  label: string;
+  state: ValveState;
+  lastChanged: string;
+  flowRate: number | null;
+}
 
-  const zones = [
-    { name: "Zone A - Irrigation", status: "active", flow: "85 L/min", pressure: "2.8 bar", valve: "open" },
-    { name: "Zone B - Livestock", status: "active", flow: "42 L/min", pressure: "2.5 bar", valve: "open" },
-    { name: "Zone C - Processing", status: "standby", flow: "0 L/min", pressure: "2.2 bar", valve: "closed" },
-    { name: "Zone D - Domestic", status: "active", flow: "28 L/min", pressure: "3.0 bar", valve: "open" },
-  ];
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const API_BASE = "/api";
+
+// Depth thresholds (cm) — too low OR too high is bad
+const DEPTH_MIN_CM       = 0;
+const DEPTH_MAX_CM       = 120;
+const DEPTH_CRIT_LOW_CM  = 15;   // below this → critical
+const DEPTH_WARN_LOW_CM  = 30;   // below this → warning
+const DEPTH_WARN_HIGH_CM = 70;   // above this → warning
+const DEPTH_CRIT_HIGH_CM = 90;   // above this → critical
+
+// Turbidity thresholds (NTU) — higher is always worse
+const TURBIDITY_MAX_NTU  = 150;
+const TURBIDITY_WARN_NTU = 50;
+const TURBIDITY_CRIT_NTU = 100;
+
+// ─── Mock data ────────────────────────────────────────────────────────────────
+
+function generateMockReadings(): WaterSensorReading[] {
+  const now = Date.now();
+  return Array.from({ length: 10 }, (_, i) => ({
+    waterSensorReadingId: 1000 - i,
+    nodeId: 1,
+    deviceId: 42,
+    takenAt: new Date(now - i * 5 * 60 * 1000).toISOString(),
+    depthLevelCm: Math.round(50 + Math.sin(i * 0.8) * 20),
+    turbidityNtu: Math.round(40 + Math.random() * 60),
+    flowRateValve1MlPerSec: Math.round((120 + Math.random() * 40) * 10) / 10,
+    flowRateValve2MlPerSec: Math.round((95  + Math.random() * 35) * 10) / 10,
+    notes: i === 3 ? "Manual flush triggered" : null,
+  }));
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString("en-US", {
+    month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+}
+
+type Status = "ok" | "warning" | "critical";
+
+// Dual-threshold status: bad at both low AND high ends
+function getDualStatus(
+  value: number,
+  critLow: number, warnLow: number,
+  warnHigh: number, critHigh: number
+): Status {
+  if (value <= critLow || value >= critHigh) return "critical";
+  if (value <= warnLow || value >= warnHigh) return "warning";
+  return "ok";
+}
+
+// One-directional status: only high end is bad
+function getHighStatus(value: number, warn: number, crit: number): Status {
+  if (value >= crit) return "critical";
+  if (value >= warn) return "warning";
+  return "ok";
+}
+
+const STATUS_COLORS: Record<Status, { text: string; bg: string; label: string }> = {
+  ok:       { text: "text-green-600", bg: "bg-green-50",  label: "OK"       },
+  warning:  { text: "text-amber-600", bg: "bg-amber-50",  label: "Warning"  },
+  critical: { text: "text-red-600",   bg: "bg-red-50",    label: "Critical" },
+};
+
+const NEEDLE_COLOR: Record<Status, string> = {
+  ok:       "#22c55e",
+  warning:  "#f59e0b",
+  critical: "#ef4444",
+};
+
+function turbidityTableLabel(ntu: number): { text: string; variant: "default" | "secondary" | "destructive" | "outline" } {
+  if (ntu < 50)  return { text: "Clear",  variant: "default"     };
+  if (ntu < 100) return { text: "Cloudy", variant: "secondary"   };
+  return             { text: "High",   variant: "destructive" };
+}
+
+// ─── Shared SVG gauge helpers ─────────────────────────────────────────────────
+
+const CX = 110;
+const CY = 100;
+const R  = 80;
+
+// Maps a value in [min, max] to an SVG angle: 180° (left) → 0° (right)
+function toAngle(value: number, min: number, max: number): number {
+  return 180 - ((Math.min(Math.max(value, min), max) - min) / (max - min)) * 180;
+}
+
+// Polar → SVG cartesian
+function polar(angleDeg: number, radius = R): { x: number; y: number } {
+  const rad = (angleDeg * Math.PI) / 180;
+  return { x: CX + radius * Math.cos(rad), y: CY - radius * Math.sin(rad) };
+}
+
+// Filled annulus arc between two angles
+function arcPath(startDeg: number, endDeg: number, radius = R, trackWidth = 16): string {
+  const inner = radius - trackWidth;
+  const s  = polar(startDeg, radius);
+  const e  = polar(endDeg,   radius);
+  const si = polar(startDeg, inner);
+  const ei = polar(endDeg,   inner);
+  const large = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
+  return [
+    `M ${s.x} ${s.y}`,
+    `A ${radius} ${radius} 0 ${large} 0 ${e.x} ${e.y}`,
+    `L ${ei.x} ${ei.y}`,
+    `A ${inner} ${inner} 0 ${large} 1 ${si.x} ${si.y}`,
+    "Z",
+  ].join(" ");
+}
+
+// ─── Dual-threshold gauge (depth) ────────────────────────────────────────────
+//
+//  Arc zones from left to right:
+//    [min → critLow]   red
+//    [critLow → warnLow]  yellow
+//    [warnLow → warnHigh] green   ← sweet spot
+//    [warnHigh → critHigh] yellow
+//    [critHigh → max]  red
+
+interface DualGaugeProps {
+  value: number;
+  min: number;
+  max: number;
+  critLow: number;
+  warnLow: number;
+  warnHigh: number;
+  critHigh: number;
+  unit: string;
+  label: string;
+}
+
+function DualGauge({ value, min, max, critLow, warnLow, warnHigh, critHigh, unit, label }: DualGaugeProps) {
+  const a = (v: number) => toAngle(v, min, max);
+
+  const critLowAngle  = a(critLow);
+  const warnLowAngle  = a(warnLow);
+  const warnHighAngle = a(warnHigh);
+  const critHighAngle = a(critHigh);
+  const needleAngle   = a(value);
+
+  const needleTip = polar(needleAngle, R - 8);
+  const needleL   = polar(needleAngle + 90, 7);
+  const needleR   = polar(needleAngle - 90, 7);
+
+  const status     = getDualStatus(value, critLow, warnLow, warnHigh, critHigh);
+  const colors     = STATUS_COLORS[status];
+  const needleCol  = NEEDLE_COLOR[status];
+
+  // Tick label positions (just outside arc)
+  const lp = (v: number) => polar(a(v), R + 12);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 flex items-center gap-3">
-            <Droplets className="w-8 h-8 text-blue-500" />
-            Water Distribution System
-          </h2>
-          <p className="text-slate-600 mt-1">Smart water management and conservation</p>
+    <Card>
+      <CardContent className="pt-5 pb-4">
+        <p className="text-sm font-medium text-slate-500 text-center mb-1">{label}</p>
+        <svg viewBox="0 0 220 118" className="w-full max-w-[260px] mx-auto block">
+          {/* Background */}
+          <path d={arcPath(180, 0)} fill="#e2e8f0" />
+          {/* Critical low */}
+          <path d={arcPath(180, critLowAngle)} fill="#fca5a5" />
+          {/* Warning low */}
+          <path d={arcPath(critLowAngle, warnLowAngle)} fill="#fde68a" />
+          {/* OK sweet spot */}
+          <path d={arcPath(warnLowAngle, warnHighAngle)} fill="#bbf7d0" />
+          {/* Warning high */}
+          <path d={arcPath(warnHighAngle, critHighAngle)} fill="#fde68a" />
+          {/* Critical high */}
+          <path d={arcPath(critHighAngle, 0)} fill="#fca5a5" />
+
+          {/* Needle */}
+          <polygon
+            points={`${needleTip.x},${needleTip.y} ${needleL.x},${needleL.y} ${needleR.x},${needleR.y}`}
+            fill={needleCol} opacity={0.95}
+          />
+          <circle cx={CX} cy={CY} r={7} fill={needleCol} />
+          <circle cx={CX} cy={CY} r={3} fill="white" />
+
+          {/* Corner labels */}
+          <text x="16"  y="110" fontSize="9" fill="#b91c1c" fontWeight="700">LOW</text>
+          <text x="92"  y="20"  fontSize="9" fill="#15803d" fontWeight="700" textAnchor="middle">OK</text>
+          <text x="204" y="110" fontSize="9" fill="#b91c1c" fontWeight="700" textAnchor="end">HIGH</text>
+
+          {/* Threshold ticks */}
+          {[
+            { v: critLow,  color: "#991b1b" },
+            { v: warnLow,  color: "#92400e" },
+            { v: warnHigh, color: "#92400e" },
+            { v: critHigh, color: "#991b1b" },
+          ].map(({ v, color }) => {
+            const p = lp(v);
+            return (
+              <text key={v} x={p.x} y={p.y} fontSize="8" fill={color} textAnchor="middle">{v}</text>
+            );
+          })}
+        </svg>
+
+        <div className="text-center -mt-1">
+          <span className={`text-3xl font-bold ${colors.text}`}>{value}</span>
+          <span className="text-slate-500 text-sm ml-1">{unit}</span>
         </div>
-        <Badge variant="outline" className="self-start bg-yellow-50 text-yellow-700 border-yellow-200 text-base sm:text-lg px-4 py-2 sm:self-auto">
-          Conservation Mode
-        </Badge>
-      </div>
+        <div className={`flex items-center justify-center gap-1.5 mt-2 px-3 py-1 rounded-full text-xs font-semibold w-fit mx-auto ${colors.bg} ${colors.text}`}>
+          {status !== "ok" && <AlertTriangle size={11} />}
+          {colors.label}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
-      {/* Alert Banner */}
-      <Card className="border-l-4 border-l-orange-500 bg-orange-50">
-        <CardContent className="pt-6">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-6 h-6 text-orange-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <div className="font-bold text-orange-900">Water Conservation Alert</div>
-              <p className="text-sm text-orange-800 mt-1">
-                Main reservoir at 52% capacity. Conservation measures active. Prioritizing essential systems.
-                Borehole backup system available if needed.
-              </p>
-            </div>
+// ─── One-directional gauge (turbidity) ───────────────────────────────────────
+//
+//  Arc zones from left to right:
+//    [0 → warn]   green
+//    [warn → crit] yellow
+//    [crit → max]  red
+
+interface HighGaugeProps {
+  value: number;
+  max: number;
+  warnThreshold: number;
+  critThreshold: number;
+  unit: string;
+  label: string;
+}
+
+function HighGauge({ value, max, warnThreshold, critThreshold, unit, label }: HighGaugeProps) {
+  const a = (v: number) => toAngle(v, 0, max);
+
+  const warnAngle   = a(warnThreshold);
+  const critAngle   = a(critThreshold);
+  const needleAngle = a(value);
+
+  const needleTip = polar(needleAngle, R - 8);
+  const needleL   = polar(needleAngle + 90, 7);
+  const needleR   = polar(needleAngle - 90, 7);
+
+  const status    = getHighStatus(value, warnThreshold, critThreshold);
+  const colors    = STATUS_COLORS[status];
+  const needleCol = NEEDLE_COLOR[status];
+
+  const lp = (v: number) => polar(a(v), R + 12);
+
+  return (
+    <Card>
+      <CardContent className="pt-5 pb-4">
+        <p className="text-sm font-medium text-slate-500 text-center mb-1">{label}</p>
+        <svg viewBox="0 0 220 118" className="w-full max-w-[260px] mx-auto block">
+          {/* Background */}
+          <path d={arcPath(180, 0)} fill="#e2e8f0" />
+          {/* OK zone */}
+          <path d={arcPath(180, warnAngle)} fill="#bbf7d0" />
+          {/* Warning zone */}
+          <path d={arcPath(warnAngle, critAngle)} fill="#fde68a" />
+          {/* Critical zone */}
+          <path d={arcPath(critAngle, 0)} fill="#fca5a5" />
+
+          {/* Needle */}
+          <polygon
+            points={`${needleTip.x},${needleTip.y} ${needleL.x},${needleL.y} ${needleR.x},${needleR.y}`}
+            fill={needleCol} opacity={0.95}
+          />
+          <circle cx={CX} cy={CY} r={7} fill={needleCol} />
+          <circle cx={CX} cy={CY} r={3} fill="white" />
+
+          {/* Corner labels */}
+          <text x="16"  y="110" fontSize="9" fill="#15803d" fontWeight="700">OK</text>
+          <text x="92"  y="20"  fontSize="9" fill="#b45309" fontWeight="700" textAnchor="middle">WARN</text>
+          <text x="204" y="110" fontSize="9" fill="#b91c1c" fontWeight="700" textAnchor="end">CRIT</text>
+
+          {/* Threshold ticks */}
+          {[
+            { v: warnThreshold, color: "#92400e" },
+            { v: critThreshold, color: "#991b1b" },
+          ].map(({ v, color }) => {
+            const p = lp(v);
+            return (
+              <text key={v} x={p.x} y={p.y} fontSize="8" fill={color} textAnchor="middle">{v}</text>
+            );
+          })}
+        </svg>
+
+        <div className="text-center -mt-1">
+          <span className={`text-3xl font-bold ${colors.text}`}>{value}</span>
+          <span className="text-slate-500 text-sm ml-1">{unit}</span>
+        </div>
+        <div className={`flex items-center justify-center gap-1.5 mt-2 px-3 py-1 rounded-full text-xs font-semibold w-fit mx-auto ${colors.bg} ${colors.text}`}>
+          {status !== "ok" && <AlertTriangle size={11} />}
+          {colors.label}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Valve Control ────────────────────────────────────────────────────────────
+
+function ValveControl({
+  valve,
+  onToggle,
+}: {
+  valve: ValveStatus;
+  onToggle: (id: number, desiredState: "open" | "closed") => void;
+}) {
+  const isOpen    = valve.state === "open";
+  const isPending = valve.state === "pending";
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">{valve.label}</CardTitle>
+          <Badge
+            variant={isPending ? "secondary" : isOpen ? "default" : "outline"}
+            className={
+              isPending
+                ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                : isOpen
+                ? "bg-green-100 text-green-800 border-green-200"
+                : "bg-slate-100 text-slate-600 border-slate-200"
+            }
+          >
+            {isPending ? "Updating…" : isOpen ? "Open" : "Closed"}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex justify-center my-3">
+          <div className={`relative w-16 h-16 rounded-full border-4 transition-all duration-500 flex items-center justify-center ${
+            isPending ? "border-yellow-400 bg-yellow-50"
+            : isOpen  ? "border-green-500 bg-green-50"
+                      : "border-slate-300 bg-slate-100"
+          }`}>
+            <Droplets size={28} className={`transition-colors duration-500 ${
+              isPending ? "text-yellow-500" : isOpen ? "text-green-500" : "text-slate-400"
+            }`} />
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600">Main Reservoir</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Waves className="w-5 h-5 text-blue-500" />
-              <span className="text-2xl font-bold text-slate-900">52%</span>
-            </div>
-            <p className="text-xs text-orange-600 mt-1 flex items-center gap-1">
-              <TrendingDown className="w-3 h-3" />
-              15,600 L remaining
-            </p>
-          </CardContent>
-        </Card>
+        <div className="flex items-center justify-center gap-1.5 mb-3">
+          <Waves size={14} className="text-blue-400" />
+          {valve.flowRate !== null
+            ? <span className="text-sm text-slate-600"><span className="text-slate-900 font-bold">{valve.flowRate}</span> mL/s</span>
+            : <span className="text-sm text-slate-400">— mL/s</span>
+          }
+        </div>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600">Backup Reservoir</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Waves className="w-5 h-5 text-green-500" />
-              <span className="text-2xl font-bold text-slate-900">76%</span>
-            </div>
-            <p className="text-xs text-slate-600 mt-1">11,400 L available</p>
-          </CardContent>
-        </Card>
+        <p className="text-xs text-center text-slate-400 mb-4">Last changed: {valve.lastChanged}</p>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600">Current Flow</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-blue-500" />
-              <span className="text-2xl font-bold text-slate-900">155 L/m</span>
-            </div>
-            <p className="text-xs text-slate-600 mt-1">Across all zones</p>
-          </CardContent>
-        </Card>
+        <div className="flex gap-2">
+          <Button variant={isOpen ? "default" : "outline"} className="flex-1"
+            disabled={isPending || isOpen} onClick={() => onToggle(valve.id, "open")}>
+            <ChevronUp size={14} className="mr-1" />Open
+          </Button>
+          <Button variant={!isOpen ? "destructive" : "outline"} className="flex-1"
+            disabled={isPending || !isOpen} onClick={() => onToggle(valve.id, "closed")}>
+            <ChevronDown size={14} className="mr-1" />Close
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600">System Pressure</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Gauge className="w-5 h-5 text-slate-600" />
-              <span className="text-2xl font-bold text-slate-900">2.6 bar</span>
-            </div>
-            <p className="text-xs text-slate-600 mt-1">Normal range</p>
-          </CardContent>
-        </Card>
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
+export function WaterDistribution() {
+  const [readings,    setReadings]    = useState<WaterSensorReading[]>([]);
+  const [valves,      setValves]      = useState<ValveStatus[]>([
+    { id: 1, label: "Solenoid Valve 1", state: "closed", lastChanged: "Never", flowRate: null },
+    { id: 2, label: "Solenoid Valve 2", state: "closed", lastChanged: "Never", flowRate: null },
+  ]);
+  const [loading,     setLoading]     = useState(true);
+  const [connected,   setConnected]   = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+
+  const fetchReadings = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/water-sensor-readings?limit=10&order=desc`);
+      if (!res.ok) throw new Error("Non-2xx");
+      const data: WaterSensorReading[] = await res.json();
+      setReadings(data);
+      setConnected(true);
+      if (data[0]) {
+        setValves(prev => prev.map(v => ({
+          ...v,
+          flowRate: v.id === 1 ? data[0].flowRateValve1MlPerSec : data[0].flowRateValve2MlPerSec,
+        })));
+      }
+    } catch {
+      const mock = generateMockReadings();
+      setReadings(mock);
+      setConnected(false);
+      if (mock[0]) {
+        setValves(prev => prev.map(v => ({
+          ...v,
+          flowRate: v.id === 1 ? mock[0].flowRateValve1MlPerSec : mock[0].flowRateValve2MlPerSec,
+        })));
+      }
+    } finally {
+      setLoading(false);
+      setLastRefresh(new Date());
+    }
+  }, []);
+
+  const fetchValveStates = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/valves`);
+      if (!res.ok) throw new Error("Non-2xx");
+      const data: { id: number; state: "open" | "closed"; lastChanged: string }[] = await res.json();
+      setValves(prev => prev.map(v => {
+        const remote = data.find(d => d.id === v.id);
+        return remote ? { ...v, state: remote.state, lastChanged: remote.lastChanged } : v;
+      }));
+    } catch { /* keep existing state */ }
+  }, []);
+
+  const handleValveToggle = async (valveId: number, desiredState: "open" | "closed") => {
+    setValves(prev => prev.map(v => v.id === valveId ? { ...v, state: "pending" } : v));
+    try {
+      const res = await fetch(`${API_BASE}/valves/${valveId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state: desiredState }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setValves(prev => prev.map(v =>
+        v.id === valveId ? { ...v, state: desiredState, lastChanged: new Date().toLocaleTimeString() } : v
+      ));
+    } catch {
+      setValves(prev => prev.map(v =>
+        v.id === valveId ? { ...v, state: desiredState === "open" ? "closed" : "open" } : v
+      ));
+    }
+  };
+
+  useEffect(() => {
+    fetchReadings();
+    fetchValveStates();
+    const id = setInterval(() => { fetchReadings(); fetchValveStates(); }, 30_000);
+    return () => clearInterval(id);
+  }, [fetchReadings, fetchValveStates]);
+
+  const latest = readings[0] ?? null;
+
+  //chart data
+  const chartData = readings
+  .slice()
+  .reverse()
+  .map(r => ({
+    time: formatDateTime(r.takenAt),
+    depth: r.depthLevelCm,
+    turbidity: r.turbidityNtu,
+    flow1: r.flowRateValve1MlPerSec,
+    flow2: r.flowRateValve2MlPerSec,
+  }));
+
+  return (
+    <div className="space-y-4">
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Water Distribution</h2>
+          <p className="text-sm text-slate-500 mt-0.5">LoRa Node · Live sensor readings &amp; valve control</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1.5 text-sm text-slate-500">
+            {connected ? <Wifi size={14} className="text-green-500" /> : <WifiOff size={14} className="text-amber-500" />}
+            {connected ? "Connected" : "Using mock data"}
+          </span>
+          {lastRefresh && <span className="text-xs text-slate-400">Updated {lastRefresh.toLocaleTimeString()}</span>}
+          <Button variant="outline" size="sm"
+            onClick={() => { fetchReadings(); fetchValveStates(); }} disabled={loading}>
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+            <span className="ml-1">Refresh</span>
+          </Button>
+        </div>
       </div>
 
-      {/* Zone Status */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {/* Gauges */}
+        <DualGauge
+          label="Water Depth"
+          value={loading ? 0 : (latest?.depthLevelCm ?? 0)}
+          min={DEPTH_MIN_CM}
+          max={DEPTH_MAX_CM}
+          critLow={DEPTH_CRIT_LOW_CM}
+          warnLow={DEPTH_WARN_LOW_CM}
+          warnHigh={DEPTH_WARN_HIGH_CM}
+          critHigh={DEPTH_CRIT_HIGH_CM}
+          unit="cm"
+        />
+        {/* Turbidity: one-directional — only high is bad */}
+        <HighGauge
+          label="Turbidity"
+          value={loading ? 0 : (latest?.turbidityNtu ?? 0)}
+          max={TURBIDITY_MAX_NTU}
+          warnThreshold={TURBIDITY_WARN_NTU}
+          critThreshold={TURBIDITY_CRIT_NTU}
+          unit="NTU"
+        />
+
+        {/* Valves */}
+        {valves.map(valve => (
+          <ValveControl key={valve.id} valve={valve} onToggle={handleValveToggle} />
+        ))}
+      </div>
+
+      {/* Data Charts */}
       <Card>
-        <CardHeader>
-          <CardTitle>Distribution Zones</CardTitle>
-          <CardDescription>Active zones and valve control</CardDescription>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Water Depth Trend</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {zones.map((zone) => (
-              <div key={zone.name} className={`flex flex-col gap-3 rounded-lg border-2 p-4 sm:flex-row sm:items-center sm:justify-between ${
-                zone.status === 'active' ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-200'
-              }`}>
-                <div className="flex items-start gap-4 sm:items-center">
-                  <div className={`w-3 h-3 rounded-full ${
-                    zone.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-slate-400'
-                  }`}></div>
-                  <div>
-                    <div className="font-medium text-slate-900">{zone.name}</div>
-                    <div className="text-sm text-slate-600 mt-1">
-                      Flow: {zone.flow} • Pressure: {zone.pressure}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <Badge className={zone.status === 'active' ? 'bg-green-600' : 'bg-slate-600'}>
-                    {zone.status}
-                  </Badge>
-                  <Badge variant="outline" className={
-                    zone.valve === 'open' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-50 text-slate-700 border-slate-200'
-                  }>
-                    Valve: {zone.valve}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Water Usage Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Water Usage Today</CardTitle>
-            <CardDescription>Hourly consumption (liters/minute)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={waterUsage}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="hour" stroke="#64748b" fontSize={12} />
-                <YAxis stroke="#64748b" fontSize={12} label={{ value: 'L/min', angle: -90, position: 'insideLeft' }} />
-                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
-                <Area 
-                  type="monotone" 
-                  dataKey="usage" 
-                  stroke="#3b82f6" 
-                  fill="#3b82f6" 
-                  fillOpacity={0.3}
-                  name="Water Usage"
+          <div className="w-full h-[250px]">
+            <ResponsiveContainer>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="time" />
+                <YAxis />
+                <Tooltip />
+                <Line
+                  type="monotone"
+                  dataKey="depth"
+                  name="Depth (cm)"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  dot={false}
                 />
-              </AreaChart>
+              </LineChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Flow Distribution Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Flow Distribution by Zone</CardTitle>
-            <CardDescription>Current water allocation (%)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={flowData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis type="number" stroke="#64748b" fontSize={12} />
-                <YAxis dataKey="zone" type="category" stroke="#64748b" fontSize={isMobile ? 10 : 12} width={isMobile ? 72 : 100} />
-                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
-                <Bar dataKey="flow" fill="#3b82f6" name="Flow %" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Reservoir Trends */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Reservoir Level Trends (7 Days)</CardTitle>
-          <CardDescription>Main and backup water storage capacity</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={reservoirLevels}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="date" stroke="#64748b" fontSize={12} />
-              <YAxis stroke="#64748b" fontSize={12} label={{ value: '%', angle: -90, position: 'insideLeft' }} />
-              <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
-              <Line 
-                type="monotone" 
-                dataKey="main" 
-                stroke="#3b82f6" 
-                strokeWidth={2} 
-                name="Main Reservoir"
-                dot={{ fill: '#3b82f6' }}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="backup" 
-                stroke="#10b981" 
-                strokeWidth={2} 
-                name="Backup Reservoir"
-                dot={{ fill: '#10b981' }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      {/* Water Quality & Pumps */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Water Quality Monitoring</CardTitle>
-            <CardDescription>Latest test results</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {[
-                { parameter: "pH Level", value: "7.2", status: "excellent", range: "6.5 - 8.5" },
-                { parameter: "Turbidity", value: "0.8 NTU", status: "excellent", range: "< 5 NTU" },
-                { parameter: "TDS", value: "245 ppm", status: "good", range: "< 500 ppm" },
-                { parameter: "Chlorine", value: "0.3 ppm", status: "good", range: "0.2 - 0.5 ppm" },
-              ].map((item) => (
-                <div key={item.parameter} className="flex flex-col gap-2 rounded-lg bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="font-medium text-slate-900">{item.parameter}</div>
-                    <div className="text-xs text-slate-600 mt-1">Range: {item.range}</div>
-                  </div>
-                  <div className="sm:text-right">
-                    <div className="font-bold text-slate-900">{item.value}</div>
-                    <Badge 
-                      variant="outline"
-                      className={`mt-1 ${
-                        item.status === 'excellent' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'
-                      }`}
-                    >
-                      {item.status}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Pump Station Status</CardTitle>
-            <CardDescription>Active pumps and performance</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {[
-                { name: "Main Pump 1", status: "active", power: "2.2 kW", uptime: "18h 32m" },
-                { name: "Main Pump 2", status: "standby", power: "0 kW", uptime: "N/A" },
-                { name: "Backup Pump", status: "standby", power: "0 kW", uptime: "N/A" },
-                { name: "Borehole Pump", status: "ready", power: "0 kW", uptime: "N/A" },
-              ].map((pump) => (
-                <div key={pump.name} className="flex flex-col gap-3 rounded-lg bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-start gap-3 sm:items-center">
-                    <div className={`w-3 h-3 rounded-full ${
-                      pump.status === 'active' ? 'bg-green-500 animate-pulse' : 
-                      pump.status === 'standby' ? 'bg-yellow-500' : 
-                      'bg-blue-500'
-                    }`}></div>
-                    <div>
-                      <div className="font-medium text-slate-900">{pump.name}</div>
-                      <div className="text-xs text-slate-600 mt-1">Power: {pump.power}</div>
-                    </div>
-                  </div>
-                  <div className="sm:text-right">
-                    <Badge className={
-                      pump.status === 'active' ? 'bg-green-600' :
-                      pump.status === 'standby' ? 'bg-yellow-600' :
-                      'bg-blue-600'
-                    }>
-                      {pump.status}
-                    </Badge>
-                    <div className="text-xs text-slate-600 mt-1">{pump.uptime}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Conservation Measures */}
-      <Card className="border-l-4 border-l-yellow-500">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-yellow-500" />
-            Active Conservation Measures
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ul className="space-y-2 text-sm">
-            <li className="flex items-start gap-2">
-              <div className="w-2 h-2 bg-yellow-500 rounded-full mt-1.5"></div>
-              <span>Irrigation schedules optimized to reduce water usage by 15%</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <div className="w-2 h-2 bg-yellow-500 rounded-full mt-1.5"></div>
-              <span>Non-essential water usage restricted until reservoir levels improve</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5"></div>
-              <span>Borehole backup system on standby for emergency use</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full mt-1.5"></div>
-              <span>Rainwater collection systems active - 60% chance of rain Thursday</span>
-            </li>
-          </ul>
-        </CardContent>
-      </Card>
-
-      {/* Statistics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <Droplets className="w-8 h-8 text-blue-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-slate-900">27,000 L</div>
-              <div className="text-sm text-slate-600">Total Capacity</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <Activity className="w-8 h-8 text-green-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-slate-900">8,450 L</div>
-              <div className="text-sm text-slate-600">Used Today</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <TrendingDown className="w-8 h-8 text-orange-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-slate-900">-18%</div>
-              <div className="text-sm text-slate-600">vs. Last Week</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <Gauge className="w-8 h-8 text-slate-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-slate-900">3.2 days</div>
-              <div className="text-sm text-slate-600">Supply Estimate</div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Data Source Note */}
-      <Card className="bg-slate-50">
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-2 text-sm text-slate-600">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <span>Live data via LoRa network • Last update: {new Date().toLocaleTimeString()} • Group 5 Module</span>
           </div>
         </CardContent>
       </Card>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Turbidity Trend</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="w-full h-[250px]">
+            <ResponsiveContainer>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="time" />
+                <YAxis />
+                <Tooltip />
+                <Line
+                  type="monotone"
+                  dataKey="turbidity"
+                  name="Turbidity (NTU)"
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Flow Rates</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="w-full h-[250px]">
+            <ResponsiveContainer>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="time" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+
+                <Line
+                  type="monotone"
+                  dataKey="flow1"
+                  name="Valve 1 (mL/s)"
+                  stroke="#10b981"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="flow2"
+                  name="Valve 2 (mL/s)"
+                  stroke="#ef4444"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Readings table */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-2">
+            <Activity size={16} className="text-slate-500" />
+            <CardTitle className="text-base">Recent Readings</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50">
+                  <th className="text-left  py-3 px-4 font-medium text-slate-600">Time</th>
+                  <th className="text-right py-3 px-4 font-medium text-slate-600">Depth (cm)</th>
+                  <th className="text-right py-3 px-4 font-medium text-slate-600">Turbidity</th>
+                  <th className="text-right py-3 px-4 font-medium text-slate-600">V1 Flow (mL/s)</th>
+                  <th className="text-right py-3 px-4 font-medium text-slate-600">V2 Flow (mL/s)</th>
+                  <th className="text-left  py-3 px-4 font-medium text-slate-600">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={6} className="py-8 text-center text-slate-400">Loading…</td></tr>
+                ) : readings.length === 0 ? (
+                  <tr><td colSpan={6} className="py-8 text-center text-slate-400">No readings available</td></tr>
+                ) : readings.map((r, idx) => {
+                  const turb      = turbidityTableLabel(r.turbidityNtu);
+                  const depthStat = getDualStatus(r.depthLevelCm, DEPTH_CRIT_LOW_CM, DEPTH_WARN_LOW_CM, DEPTH_WARN_HIGH_CM, DEPTH_CRIT_HIGH_CM);
+                  return (
+                    <tr key={r.waterSensorReadingId}
+                      className={`border-b border-slate-50 hover:bg-slate-50 transition-colors ${idx === 0 ? "font-medium" : ""}`}>
+                      <td className="py-3 px-4 text-slate-700 whitespace-nowrap">
+                        {idx === 0 && <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-2 align-middle" />}
+                        {formatDateTime(r.takenAt)}
+                      </td>
+                      <td className={`py-3 px-4 text-right tabular-nums font-medium ${
+                        depthStat === "critical" ? "text-red-600"
+                        : depthStat === "warning" ? "text-amber-600"
+                        : "text-slate-700"}`}>
+                        {r.depthLevelCm}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <Badge variant={turb.variant} className="text-xs">
+                          {r.turbidityNtu} – {turb.text}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-4 text-right tabular-nums text-slate-700">{r.flowRateValve1MlPerSec}</td>
+                      <td className="py-3 px-4 text-right tabular-nums text-slate-700">{r.flowRateValve2MlPerSec}</td>
+                      <td className="py-3 px-4 text-slate-500 text-xs max-w-[140px] truncate">{r.notes ?? "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Dev checklist */}
+      {!connected && (
+        <Card className="border-dashed border-slate-300 bg-slate-50">
+          <CardContent className="pt-5 pb-5">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">API Integration Checklist</p>
+            <ul className="text-xs text-slate-500 space-y-1 list-disc pl-4">
+              <li><code>GET {API_BASE}/water-sensor-readings?limit=10&order=desc</code> → <code>WaterSensorReading[]</code></li>
+              <li><code>GET {API_BASE}/valves</code> → <code>{"{ id, state, lastChanged }[]"}</code></li>
+              <li><code>PUT {API_BASE}/valves/:id</code> body <code>{"{ state: 'open'|'closed' }"}</code> → triggers LoRa command</li>
+              <li>DB schema: add <code>flowRateValve1MlPerSec</code> + <code>flowRateValve2MlPerSec</code> (replaces <code>flowRateMlPerSec</code>)</li>
+              <li>Update <code>API_BASE</code> at the top of this file to your server URL.</li>
+            </ul>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
