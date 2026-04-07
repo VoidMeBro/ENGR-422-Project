@@ -26,9 +26,6 @@ const cropGrowth = [
 export function CropFarm() {
   const crops = [
     { name: "Tomatoes", area: "Zone A", status: "Flowering", health: 95, daysToHarvest: 28 },
-    { name: "Lettuce", area: "Zone B", status: "Mature", health: 92, daysToHarvest: 7 },
-    { name: "Peppers", area: "Zone C", status: "Growing", health: 88, daysToHarvest: 42 },
-    { name: "Carrots", area: "Zone D", status: "Growing", health: 90, daysToHarvest: 35 },
   ];
 
   return (
@@ -91,19 +88,122 @@ export function CropFarm() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600">Pest Activity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Bug className="w-5 h-5 text-slate-500" />
-              <span className="text-2xl font-bold text-slate-900">Low</span>
-            </div>
-            <p className="text-xs text-slate-600 mt-1">No action needed</p>
-          </CardContent>
-        </Card>
-      </div>
+        {/* Environmental Conditions */}
+                  <Card>
+                      <CardHeader>
+                          <CardTitle>Nutrient Levels</CardTitle>
+                          <CardDescription>Soil analysis results</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                          <div className="space-y-4">
+                              {[
+                                  { nutrient: "Nitrogen (N)", level: 85, status: "good" },
+                                  { nutrient: "Phosphorus (P)", level: 78, status: "good" },
+                                  { nutrient: "Potassium (K)", level: 92, status: "excellent" },
+                                  { nutrient: "Electroconductivity", level: 6.5, status: "optimal", unit: "S/m" },
+                              ].map((item) => (
+                                  <div key={item.nutrient}>
+                                      <div className="flex items-center justify-between mb-1">
+                                          <span className="text-sm text-slate-600">{item.nutrient}</span>
+                                          <span className="text-sm font-bold text-slate-900">
+                                              {item.level}{item.unit !== undefined ? item.unit : '%'}
+                                          </span>
+                                      </div>
+                                  <div className="w-full bg-slate-200 rounded-full h-2">
+                                          <div
+                                              className={`h-2 rounded-full ${item.status === 'excellent' ? 'bg-green-600' :
+                                                      item.status === 'good' ? 'bg-blue-600' :
+                                                          'bg-yellow-600'
+                                                  }`}
+                                              style={{ width: `${item.level}%` }}
+                                          ></div>
+                                      </div>
+                                  </div>
+                              ))}
+                          </div>
+                      </CardContent>
+                  </Card>
+
+              </div>
+
+
+       
+
+          {/* System Alerts */}
+          <Card className="border-l-4 border-l-green-500">
+              <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                      <AlertCircle className="w-5 h-5 text-green-500" />
+                      Farm Status
+                  </CardTitle>
+              </CardHeader>
+              <CardContent>
+                  <ul className="space-y-2 text-sm">
+                      <li className="flex items-start gap-2">
+                          <div className="w-2 h-2 bg-green-500 rounded-full mt-1.5"></div>
+                          <span>All irrigation systems functioning properly</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                          <div className="w-2 h-2 bg-green-500 rounded-full mt-1.5"></div>
+                          <span>Soil moisture levels optimal across all zones</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5"></div>
+                          <span>Lettuce harvest ready in Zone B - recommended to harvest within 7 days</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                          <div className="w-2 h-2 bg-yellow-500 rounded-full mt-1.5"></div>
+                          <span>Rain expected Thursday - automatic irrigation will be adjusted</span>
+                      </li>
+                  </ul>
+              </CardContent>
+          </Card>
+
+          {/* Charts */}
+          <div>
+              {/* Soil Moisture Chart */}
+              <Card>
+                  <CardHeader>
+                      <CardTitle>Soil Moisture Levels (24h)</CardTitle>
+                      <CardDescription>Moisture percentage by zone</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                      <ResponsiveContainer width="100%" height={300}>
+                          <LineChart data={soilMoisture}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                              <XAxis dataKey="time" stroke="#64748b" fontSize={12} />
+                              <YAxis stroke="#64748b" fontSize={12} label={{ value: '%', angle: -90, position: 'insideLeft' }} />
+                              <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
+                              <Line
+                                  type="monotone"
+                                  dataKey="zone1"
+                                  stroke="#3b82f6"
+                                  strokeWidth={2}
+                                  name="Zone A"
+                                  dot={{ fill: '#3b82f6' }}
+                              />
+                              <Line
+                                  type="monotone"
+                                  dataKey="zone2"
+                                  stroke="#10b981"
+                                  strokeWidth={2}
+                                  name="Zone B"
+                                  dot={{ fill: '#10b981' }}
+                              />
+                              <Line
+                                  type="monotone"
+                                  dataKey="zone3"
+                                  stroke="#f59e0b"
+                                  strokeWidth={2}
+                                  name="Zone C"
+                                  dot={{ fill: '#f59e0b' }}
+                              />
+                          </LineChart>
+                      </ResponsiveContainer>
+                  </CardContent>
+              </Card>
+
+          </div>
 
       {/* Crop Status Grid */}
       <Card>
@@ -144,76 +244,7 @@ export function CropFarm() {
         </CardContent>
       </Card>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Soil Moisture Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Soil Moisture Levels (24h)</CardTitle>
-            <CardDescription>Moisture percentage by zone</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={soilMoisture}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="time" stroke="#64748b" fontSize={12} />
-                <YAxis stroke="#64748b" fontSize={12} label={{ value: '%', angle: -90, position: 'insideLeft' }} />
-                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
-                <Line 
-                  type="monotone" 
-                  dataKey="zone1" 
-                  stroke="#3b82f6" 
-                  strokeWidth={2} 
-                  name="Zone A"
-                  dot={{ fill: '#3b82f6' }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="zone2" 
-                  stroke="#10b981" 
-                  strokeWidth={2} 
-                  name="Zone B"
-                  dot={{ fill: '#10b981' }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="zone3" 
-                  stroke="#f59e0b" 
-                  strokeWidth={2} 
-                  name="Zone C"
-                  dot={{ fill: '#f59e0b' }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Crop Growth Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Tomato Growth Progress</CardTitle>
-            <CardDescription>Average plant height (Zone A)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={cropGrowth}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="week" stroke="#64748b" fontSize={12} />
-                <YAxis stroke="#64748b" fontSize={12} label={{ value: 'cm', angle: -90, position: 'insideLeft' }} />
-                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
-                <Area 
-                  type="monotone" 
-                  dataKey="height" 
-                  stroke="#10b981" 
-                  fill="#10b981" 
-                  fillOpacity={0.3}
-                  name="Height (cm)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+   
 
       {/* Irrigation Schedule */}
       <Card>
@@ -225,18 +256,11 @@ export function CropFarm() {
           <div className="space-y-4">
             {[
               { zone: "Zone A (Tomatoes)", lastWatered: "20:00 (3 hours ago)", nextWatering: "08:00 tomorrow", status: "scheduled" },
-              { zone: "Zone B (Lettuce)", lastWatered: "19:30 (3.5 hours ago)", nextWatering: "07:00 tomorrow", status: "scheduled" },
-              { zone: "Zone C (Peppers)", lastWatered: "20:15 (2.75 hours ago)", nextWatering: "08:00 tomorrow", status: "scheduled" },
-              { zone: "Zone D (Carrots)", lastWatered: "20:00 (3 hours ago)", nextWatering: "09:00 tomorrow", status: "scheduled" },
             ].map((schedule) => (
               <div key={schedule.zone} className="flex flex-col gap-3 rounded-lg bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="font-medium text-slate-900">{schedule.zone}</div>
                   <div className="text-sm text-slate-600 mt-1">Last: {schedule.lastWatered}</div>
-                </div>
-                <div className="sm:text-right">
-                  <Badge className="bg-blue-600">{schedule.status}</Badge>
-                  <div className="text-sm text-slate-600 mt-1">Next: {schedule.nextWatering}</div>
                 </div>
               </div>
             ))}
@@ -244,106 +268,6 @@ export function CropFarm() {
         </CardContent>
       </Card>
 
-      {/* Environmental Conditions */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Nutrient Levels</CardTitle>
-            <CardDescription>Soil analysis results</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {[
-                { nutrient: "Nitrogen (N)", level: 85, status: "good" },
-                { nutrient: "Phosphorus (P)", level: 78, status: "good" },
-                { nutrient: "Potassium (K)", level: 92, status: "excellent" },
-                { nutrient: "pH Level", level: 6.5, status: "optimal", unit: "" },
-              ].map((item) => (
-                <div key={item.nutrient}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm text-slate-600">{item.nutrient}</span>
-                    <span className="text-sm font-bold text-slate-900">
-                      {item.level}{item.unit !== undefined ? item.unit : '%'}
-                    </span>
-                  </div>
-                  <div className="w-full bg-slate-200 rounded-full h-2">
-                    <div 
-                      className={`h-2 rounded-full ${
-                        item.status === 'excellent' ? 'bg-green-600' : 
-                        item.status === 'good' ? 'bg-blue-600' : 
-                        'bg-yellow-600'
-                      }`}
-                      style={{ width: `${item.level}%` }}
-                    ></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Weather Impact</CardTitle>
-            <CardDescription>7-day forecast for farm planning</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {[
-                { day: "Today", temp: "28°C", rain: "10%", uv: "High", icon: Sun },
-                { day: "Tomorrow", temp: "27°C", rain: "20%", uv: "High", icon: Sun },
-                { day: "Thursday", temp: "25°C", rain: "60%", uv: "Moderate", icon: Droplets },
-                { day: "Friday", temp: "28°C", rain: "15%", uv: "High", icon: Sun },
-              ].map((forecast) => {
-                const Icon = forecast.icon;
-                return (
-                  <div key={forecast.day} className="flex flex-col gap-3 rounded-lg bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-3">
-                      <Icon className="w-5 h-5 text-slate-600" />
-                      <span className="font-medium text-slate-900">{forecast.day}</span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                      <span className="text-slate-900">{forecast.temp}</span>
-                      <span className="text-blue-600">{forecast.rain}</span>
-                      <span className="text-slate-600">UV: {forecast.uv}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* System Alerts */}
-      <Card className="border-l-4 border-l-green-500">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-green-500" />
-            Farm Status
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ul className="space-y-2 text-sm">
-            <li className="flex items-start gap-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full mt-1.5"></div>
-              <span>All irrigation systems functioning properly</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full mt-1.5"></div>
-              <span>Soil moisture levels optimal across all zones</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5"></div>
-              <span>Lettuce harvest ready in Zone B - recommended to harvest within 7 days</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <div className="w-2 h-2 bg-yellow-500 rounded-full mt-1.5"></div>
-              <span>Rain expected Thursday - automatic irrigation will be adjusted</span>
-            </li>
-          </ul>
-        </CardContent>
-      </Card>
 
       {/* Data Source Note */}
       <Card className="bg-slate-50">
