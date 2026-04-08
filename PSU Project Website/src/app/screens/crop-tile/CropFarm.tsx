@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Wheat, Droplets, Thermometer, Bug, TrendingUp, AlertCircle, Sun, Sprout } from "lucide-react";
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Badge } from "../../components/ui/badge";
+import { useState } from "react";
 
 // Mock data
 const soilMoisture = [
@@ -26,7 +27,8 @@ const cropGrowth = [
 export function CropFarm() {
   const crops = [
     { name: "Tomatoes", area: "Zone A", status: "Flowering", health: 95, daysToHarvest: 28 },
-  ];
+    ];
+    const [isMinimized, setIsMinimized] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -130,34 +132,59 @@ export function CropFarm() {
        
 
           {/* System Alerts */}
-          <Card className="border-l-4 border-l-green-500">
-              <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                      <AlertCircle className="w-5 h-5 text-green-500" />
+          <div className="fixed right-4 bottom-4 z-50">
+
+              {!isMinimized ? (
+                  // 🔹 FULL CARD
+                  <Card className="border-l-4 border-l-green-500 w-80 shadow-lg relative">
+                      <CardHeader>
+                          <CardTitle className="flex items-center justify-between">
+                              <span className="flex items-center gap-2">
+                                  Farm Status
+                              </span>
+
+                              <button
+                                  onClick={() => setIsMinimized(true)}
+                                  className="text-slate-500 hover:text-yellow-500"
+                              >
+                                  ✕
+                              </button>
+                          </CardTitle>
+                      </CardHeader>
+
+                      <CardContent>
+                          <ul className="space-y-2 text-sm">
+                              <li className="flex items-start gap-2">
+                                  <div className="w-2 h-2 bg-green-500 rounded-full mt-1.5"></div>
+                                  <span>All irrigation systems functioning properly</span>
+                              </li>
+                              <li className="flex items-start gap-2">
+                                  <div className="w-2 h-2 bg-green-500 rounded-full mt-1.5"></div>
+                                  <span>Soil moisture levels optimal across all zones</span>
+                              </li>
+                              <li className="flex items-start gap-2">
+                                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5"></div>
+                                  <span>Tomatoes harvest ready in Zone B - recommended to harvest within 7 days</span>
+                              </li>
+                              <li className="flex items-start gap-2">
+                                  <div className="w-2 h-2 bg-yellow-500 rounded-full mt-1.5"></div>
+                                  <span>Rain expected Thursday - automatic irrigation will be adjusted</span>
+                              </li>
+                          </ul>
+                      </CardContent>
+                  </Card>
+
+              ) : (
+                  // 🔹 MINIMIZED TAB
+                  <div
+                      onClick={() => setIsMinimized(false)}
+                      className="cursor-pointer bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-green-700 transition"
+                  >
                       Farm Status
-                  </CardTitle>
-              </CardHeader>
-              <CardContent>
-                  <ul className="space-y-2 text-sm">
-                      <li className="flex items-start gap-2">
-                          <div className="w-2 h-2 bg-green-500 rounded-full mt-1.5"></div>
-                          <span>All irrigation systems functioning properly</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                          <div className="w-2 h-2 bg-green-500 rounded-full mt-1.5"></div>
-                          <span>Soil moisture levels optimal across all zones</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5"></div>
-                          <span>Lettuce harvest ready in Zone B - recommended to harvest within 7 days</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                          <div className="w-2 h-2 bg-yellow-500 rounded-full mt-1.5"></div>
-                          <span>Rain expected Thursday - automatic irrigation will be adjusted</span>
-                      </li>
-                  </ul>
-              </CardContent>
-          </Card>
+                  </div>
+              )}
+
+          </div>
 
           {/* Charts */}
           <div>
@@ -178,7 +205,7 @@ export function CropFarm() {
                                   type="monotone"
                                   dataKey="zone1"
                                   stroke="#3b82f6"
-                                  strokeWidth={2}
+                                  strokeWidth={2}                           
                                   name="Zone A"
                                   dot={{ fill: '#3b82f6' }}
                               />
