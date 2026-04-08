@@ -66,16 +66,29 @@ export function Register() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (validateForm()) {
-      // In a real app, this would send data to a backend
-      console.log("Registration data:", formData);
-      // Navigate to dashboard after successful registration
-      navigate("/dashboard");
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  if (!validateForm()) return;  // validateForm() already handles all field checks
+
+  try {
+    const response = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData)
+    });
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      navigate("/Dashboard");
+    } else {
+      setErrors({ form: data.message || "Registration failed. Please try again." });
     }
-  };
+  } catch (err) {
+    setErrors({ form: "Server error. Please try again later." });
+  }
+};
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
