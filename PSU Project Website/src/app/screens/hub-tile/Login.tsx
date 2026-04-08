@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from "react-router";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -6,23 +6,46 @@ import { Label } from "../../components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Wheat, Lock, User } from "lucide-react";
 
+
+
+
+
+
 export function Login() {
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Simple mock authentication
-    if (username && password) {
-      // In a real app, this would validate against a backend
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  
+
+
+  if (!username || !password) {
+    setError("Please enter both username and password");
+    return;
+  }
+  
+
+  try {
+    const response = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+      
+    });
+    const data = await response.json();
+
+    if (response.ok && data.success) {
       navigate("/dashboard");
     } else {
-      setError("Please enter both username and password");
+      setError(data.message || "Invalid credentials");
     }
-  };
+  } catch (err) {
+    setError("Server error. Please try again.");
+  }
+};
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 via-green-800 to-blue-900 flex items-center justify-center p-4">
