@@ -19,10 +19,9 @@ import { Dashboard } from "./screens/hub-tile/Dashboard";
 import { Login } from "./screens/hub-tile/Login";
 import { Register } from "./screens/hub-tile/Register";
 import { PowerGeneration } from "./screens/power-tile/PowerGeneration";
-import { ChickenCoop} from "./screens/coop-tile/ChickenCoop";
-import { Coop } from "./screens/coop-tile/coop";
-import { Chicken } from "./screens/coop-tile/chicken";
-import { Chicken_dashboard } from "./screens/coop-tile/chicken_dashboard";
+import  Coop  from "./screens/coop-tile/coop";
+import  Chicken  from "./screens/coop-tile/chicken";
+import  Chicken_dashboard  from "./screens/coop-tile/chicken_dashboard";
 import { CropFarm } from "./screens/crop-tile/CropFarm";
 import { WaterDistribution } from "./screens/water-tile/WaterDistribution";
 import { NotFound } from "./screens/hub-tile/NotFound";
@@ -47,7 +46,6 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: Dashboard },
       { path: "power-generation", Component: PowerGeneration },
-      { path: "chicken-coop", Component: ChickenCoop },
       { path: "chicken-coop/coop", Component: Coop },
       { path: "chicken-coop/chicken", Component: Chicken },
       { path: "chicken-coop/chicken-dashboard", Component: Chicken_dashboard },

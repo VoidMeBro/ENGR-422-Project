@@ -1,10 +1,44 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
-import { Bird, Egg, Thermometer, Wind, TrendingUp, AlertCircle } from "lucide-react";
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Badge } from "../../components/ui/badge";
+import "../../../styles/chickenCss/chicken.css";
+import AddChickenForm from "../../components/chickenComponents/addChickenForm";
+import EggsLayedForm from "../../components/chickenComponents/eggsLayedForm";
+import { useState } from "react";
+import ChickenProfiles from "../../components/chickenComponents/chickenProfiles";
+function Chicken(){
+    const [hideChicken, setHideChicken] = useState(true);
+    const [hideEggs, setHideEggs] = useState(true);
+    const [refreshKey, setRefreshKey] = useState(0);
+    return(
+        <main className="chickenMain main-content">
+            <h1>Chicken Management</h1>
+            <section id="add-chicken">
+            <div onClick={() => setHideChicken((current) => !current)} style={{userSelect:"none"}}> 
+                <h2 className={hideChicken ? "formTitlesBefore" : "formTitlesAfter"} style={{cursor:"pointer"}}>Add New Chicken  
+                    <img className="formIcons" src={hideChicken ? "/chickenImages/down-arrow.svg" : "/chickenImages/up-arrow.svg"} alt=""/>
+                </h2>
+            </div>
+            {!hideChicken && <AddChickenForm onChickenAdded={() => setRefreshKey(k => k + 1)} />}
+            </section>{/* End of add-chicken form */}
 
-export function Chicken() {
-  return <div>Chicken test</div>;
+            <section id = "eggs-layed">
+            <div onClick={() => setHideEggs((current) => !current)} style={{userSelect:"none"}}>
+                <h2 className={hideEggs ? "formTitlesBefore" : "formTitlesAfter"} style={{cursor:"pointer"}}>Log Eggs Collected 
+                    <img className="formIcons" src={hideEggs ? "/chickenImages/down-arrow.svg" : "/chickenImages/up-arrow.svg"} alt=""/>
+                </h2>
+            </div>
+            {!hideEggs && <EggsLayedForm/>}
+            </section>{/* End of eggs-layed form */}
+
+            <section id = "chicken-list">
+            <div>
+                <h2>Your Chickens</h2>
+                <hr className="chickenHr"/>
+            </div>
+            {/* Insert the different chicken cards here */}
+            <ChickenProfiles refreshKey={refreshKey}/>
+            </section> {/* End of chicken-list section */}
+            
+        </main>
+    )
 }
 
-export default Chicken;
+export default Chicken
