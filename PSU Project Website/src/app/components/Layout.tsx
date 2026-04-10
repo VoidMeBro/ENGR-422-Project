@@ -17,6 +17,7 @@ export function Layout() {
   //const mainWidthClass = activeHandle?.mainWidthClass ?? "max-w-7xl";
 
   const handleLogout = () => {
+    sessionStorage.clear();
     navigate("/login");
   };
 

@@ -38,6 +38,7 @@ const handleSubmit = async (e: React.FormEvent) => {
     const data = await response.json();
 
     if (response.ok && data.success) {
+      sessionStorage.setItem("userId", data.user);  //---should store the User ID until the user closes the browser tab
       navigate("/dashboard");
     } else {
       setError(data.message || "Invalid credentials");
