@@ -1,9 +1,53 @@
 import { useEffect, useState } from "react";
-function logWaste(){
-    const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+
+interface LogWasteProps {
+    coopId: number;
+    period: number;
+    reminderDate: string;
+    setReminderDate: (value: string) => void;
+}
+
+function newCleaningLog(coopId: number, lastCleaned: string, nextCleanDue: string, weightKg: number, notes: string, period: number) {
+    /* Database call to log waste collection for the coop with the given coopId */
+
+    ///import.meta.env.VITE_API_BASE_URL
+    fetch(`/api/addCleaningLog`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        
+        body: JSON.stringify({ coopId, lastCleaned, nextCleanDue, weightKg, notes }),
+    })
+    .then(response => response.json()) // always parse the body
+    .catch(err => {
+        console.error("Fetch error:", err);
+    });
+    ///import.meta.env.VITE_API_BASE_URL
+
+    fetch(`/api/updateCleaningTimes`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reminderDate: nextCleanDue, reminderPeriod: period, coopId }),
+    })  
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`Network response was not ok: ${response.status}`);
+        }
+        return response.json();
+    })
+    .catch(error => {
+        console.error("Error updating cleaning times:", error);
+    });    
+}
+
+function logWaste({ coopId, period, reminderDate, setReminderDate }: LogWasteProps){
+     const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
     const [quantity, setQuantity] = useState<number | "">(0);
+    const [notes, setNotes] = useState("");
     const [submitted, setSubmitted] = useState(false);
     const [errors, setErrors] = useState<{ date?: string; quantity?: string}>({});
+
 
     const valid = (): { date?: string; quantity?: string} => {
         const newErrors: { date?: string; quantity?: string} = {};
@@ -29,9 +73,22 @@ function logWaste(){
                 setErrors(validationErrors);
             }
         else{
-        /* Enter data into database here */
-            setDate("");
-            setQuantity("");
+            let nextCleanDue = new Date(`${date}T${reminderDate.split("T")[1] || "00:00"}`);
+            nextCleanDue.setDate(nextCleanDue.getDate() + period);
+
+            let nextDate = nextCleanDue.toLocaleDateString('sv-SE').split("T")[0]+ 
+            ` ${nextCleanDue.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
+            let collectionDate = new Date(`${date}T${nextCleanDue.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`).toLocaleDateString('sv-SE').split("T")[0]+ ` ${reminderDate.split("T")[1] || "00:00"}`;
+
+            nextDate = nextDate.substring(0, 19);
+            collectionDate = collectionDate.substring(0, 19);
+
+            console.log("Logging new cleaning with data:", { coopId, lastCleaned: collectionDate, 
+            nextCleanDue: nextDate, weightKg: quantity, notes });
+            newCleaningLog(coopId, collectionDate, nextDate, Number(quantity), notes, period);
+            setReminderDate(nextDate);
+            setDate(new Date().toISOString().split("T")[0]);
+            setQuantity(0);
             setErrors({});
             setSubmitted(false);
         };
@@ -61,7 +118,9 @@ function logWaste(){
                     {errors.quantity && <span className="formError">{errors.quantity}</span>}
 
                     <label htmlFor="notes">Notes:</label>
-                    <textarea name="notes" id="notes" rows={4} placeholder="Additional details about the collection..."></textarea>
+                    <textarea name="notes" id="notes" rows={4} placeholder="Additional details about the collection..."
+                    value={notes} onChange={(e) => setNotes(e.target.value)}
+                    ></textarea>
                     <button type="submit" id = "log-poop-button">Log Collection</button>
 
         </form>

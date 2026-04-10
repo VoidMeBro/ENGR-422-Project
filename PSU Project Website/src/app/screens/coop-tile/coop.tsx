@@ -103,7 +103,8 @@ function Coop(){
         <section id="top">
             <DoorControl doorState={doorState} setDoorState={setDoorState} 
             times={[openTime, closeTime]} setOpenTime={setOpenTime} setCloseTime={setCloseTime} coopId={coopId} />
-            <WasteReminder date={reminderDate} period={reminderPeriod} setDate={setReminderDate} setPeriod={setReminderPeriod} coopId={coopId} />
+            <WasteReminder date={reminderDate} period={reminderPeriod} setDate={setReminderDate} 
+            setPeriod={setReminderPeriod} coopId={coopId} coopName={coopName} />
         </section>
         <section id="log-poop">
             <div onClick={() => setHidePoopLog((current) => !current)} style={{userSelect:"none"}}>
@@ -113,7 +114,7 @@ function Coop(){
             </div>
         
 
-            {!poopLog && <LogWaste />}
+            {!poopLog && <LogWaste coopId={coopId} period={reminderPeriod} reminderDate={reminderDate} setReminderDate={setReminderDate} />}
         </section>
         <section id="steps-section">
             <div onClick={() => setHideSteps((current) => !current)} style={{userSelect:"none"}}>

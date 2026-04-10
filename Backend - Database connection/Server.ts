@@ -387,30 +387,6 @@ app.put('/api/updateCleaningTimes', (req, res) => {
     });
 });
 
-app.post('/api/addCoop', (req, res) => {
-    const { name, doorOpen, doorClose, reminderDate, reminderPeriod } = req.body;
-    const query = 'INSERT INTO coops (name, doorOpen, doorClose, reminderDate, reminderPeriod) VALUES (?, ?, ?, ?, ?)';
-    db.query(query, [name, doorOpen, doorClose, reminderDate, reminderPeriod], (err: Error | null, results: any) => {
-        if (err) {
-            console.error('Error adding coop:', err);
-            return res.status(500).json({ error: 'Database insert error' });
-        }
-        res.json({ message: 'Coop added successfully', coopId: results.insertId });
-    });
-});
-
-app.post('/api/addCleaningLog', (req, res) => {
-    const { coopId, lastCleaned, NextCleanDue, weightKg, notes } = req.body;
-    const query = 'INSERT INTO coopCleaningLogs (coopId, lastCleaned, NextCleanDue, weightKg, notes) VALUES (?, ?, ?, ?, ?)';
-
-    db.query(query, [coopId, lastCleaned, NextCleanDue, weightKg, notes], (err: Error | null, _results: any) => {
-        if (err) {
-            console.error('Error adding cleaning log:', err);
-            return res.status(500).json({ error: 'Database insert error' });
-        }
-        res.json({ message: 'Cleaning log added successfully' });
-    });
-});
 
 app.post('/api/addCoop', (req, res) => {
     const { name, doorOpen, doorClose, reminderDate, reminderPeriod } = req.body;

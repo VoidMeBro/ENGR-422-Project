@@ -6,14 +6,15 @@ interface WasteReminderProps  {
     setDate: (value: string) => void;
     setPeriod: (value: number) => void;
     coopId: number;
+    coopName: string;
 }
 
 function updateWasteReminder(coopId: number, reminderDate: string, reminderPeriod: number) {
-    console.log("Making API call to:", `/updateCleaningTimes`);
-    console.log("With data:", { reminderDate, reminderPeriod, coopId });
+    //console.log("Making API call to:", `/updateCleaningTimes`);
+    //console.log("With data:", { reminderDate, reminderPeriod, coopId });
 
     /* Database call to update waste reminder for the coop with the given coopId */
-    fetch(`/updateCleaningTimes`, {
+    fetch(`/api/updateCleaningTimes`, {
         method: "PUT",
         headers: {
             "Content-Type": "application/json",
@@ -21,7 +22,7 @@ function updateWasteReminder(coopId: number, reminderDate: string, reminderPerio
         body: JSON.stringify({ reminderDate, reminderPeriod, coopId }),
     })
     .then(response => {
-        console.log("Response status:", response.status);
+        //console.log("Response status:", response.status);
         if (!response.ok) {
             throw new Error(`Network response was not ok: ${response.status}`);
         }
@@ -35,8 +36,8 @@ function updateWasteReminder(coopId: number, reminderDate: string, reminderPerio
     });
 }
 
-function wasteReminder({ date, period, setDate, setPeriod, coopId }: WasteReminderProps){
-    console.log("WasteReminder component rendered with date:", date, "and period:", period);
+function wasteReminder({ date, period, setDate, setPeriod, coopId, coopName }: WasteReminderProps){
+    //console.log("WasteReminder component rendered with date:", date, "and period:", period);
     const [reminderTime, setReminderTime] = useState("");
     const [reminderPeriod, setReminderPeriod] = useState<number | "">(0);
     const [reminderDate, setReminderDate] = useState("");
@@ -131,7 +132,7 @@ function wasteReminder({ date, period, setDate, setPeriod, coopId }: WasteRemind
                     <p className = "coop-text">Daily Reminder</p>
                     <hr className="coop-hr"/>
                     
-                    <p id="collection">Remember to clean coop at {collectionDate} {temptime}</p>
+                    <p id="collection">Clean {coopName} coop every {period} days. Next clean: {collectionDate} {temptime}</p>
                     <hr className="coop-hr"/>
                     
                     <form id="reminder-form" onSubmit={handleSubmit} onBlur={handleBlur} noValidate>
