@@ -11,7 +11,7 @@ function newCleaningLog(coopId: number, lastCleaned: string, nextCleanDue: strin
     /* Database call to log waste collection for the coop with the given coopId */
 
     ///import.meta.env.VITE_API_BASE_URL
-    fetch(`/api/addCleaningLog`, {
+    fetch("/api/addCleaningLog", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",

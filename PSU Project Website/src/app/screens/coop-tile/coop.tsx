@@ -36,7 +36,7 @@ function Coop(){
         //console.log("useEffect fired");
         const fetchCoopData = async () => {
             try {
-                const res = await fetch(`/coopSelect`);
+                const res = await fetch(`/api/coopSelect`);
                 //console.log("Response status:", res.status);
                 const data = await res.json();
                

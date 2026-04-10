@@ -14,7 +14,7 @@ function updateWasteReminder(coopId: number, reminderDate: string, reminderPerio
     //console.log("With data:", { reminderDate, reminderPeriod, coopId });
 
     /* Database call to update waste reminder for the coop with the given coopId */
-    fetch(`/api/updateCleaningTimes`, {
+    fetch("/api/updateCleaningTimes", {
         method: "PUT",
         headers: {
             "Content-Type": "application/json",
