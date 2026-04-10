@@ -1,4 +1,4 @@
-import { Outlet, Link, useNavigate, useLocation } from "react-router";
+import { Outlet, Link, useNavigate, useLocation, useMatches } from "react-router";
 import { Button } from "./ui/button";
 import { useState } from "react";
 // old import
@@ -11,6 +11,10 @@ export function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   //added const for coop dropdown
   const [coopDropdownOpen, setCoopDropdownOpen] = useState(false);
+
+  const matches = useMatches();
+  //const activeHandle = matches[matches.length - 1]?.handle as LayoutHandle | undefined;
+  //const mainWidthClass = activeHandle?.mainWidthClass ?? "max-w-7xl";
 
   const handleLogout = () => {
     navigate("/login");
