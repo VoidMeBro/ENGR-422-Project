@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import { Request, Response } from 'express';
 dotenv.config();
 
+let UserID = 0; // Placeholder for user ID, can be set upon login and used in other routes as needed
+
 
 const app = express();
 
@@ -22,22 +24,6 @@ const db = mysql.createConnection({
 
 
 
-//app.get -- sets the route on the express server, listening for GET requests
-// /api/users --the URL path that the frontend will call to retrieve user data, can be changed to match your specific needs
-// Req: request is the request that is being sent to the server
-// res: response is the response that the server will send back to the client
-
-// db.query('SELECT * FROM users' -- executes a SQL query against the database
-
-// (err: Error | null, results: any) => { ... } -- callback function that handles the result of the query, 
-//  -- err:error|null will contain any error that occurred, and results:any will contain the data retrieved from the database
-// res.json(results) -- res.json sends the "results" back to the client in JSON format
-// the "results" in res.json(results) is the results of the SQL query being sent
-
-
-// '/api/users' seems to be generic, change tis to the correct route
-// query is just generic
-
   db.connect((err: Error | null) => {
   if (err) {
     console.error('Database connection failed:', err.message); // ← will show in terminal
@@ -47,30 +33,13 @@ const db = mysql.createConnection({
 });
 
 
-/*----- may be used to register new accounts ---------
-
-app.post('/api/register', async (req: Request, res: Response) => {
-  const { username, password } = req.body;
-
-  const hashedPassword = await bcrypt.hash(password, 10); // ← hash before saving
-
-  db.query(
-    'INSERT INTO users (username, password) VALUES (?, ?)',
-    [username, hashedPassword],                           // ← save the hash, not plain text
-    (err: Error | null) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ success: true, message: "User registered" });
-    }
-  );
-});
--------------------------------*/
 
 //----- login route/API, checks if the username exists and if the password matches------//
 app.post('/api/login', async (req: Request, res: Response) => {
   const { username, password } = req.body;
 
     db.query(
-    'SELECT * FROM users WHERE username = ?',
+    'SELECT userId, password, username FROM users WHERE username = ?',
     [username],
     (err: Error | null, results: any[]) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -86,7 +55,11 @@ app.post('/api/login', async (req: Request, res: Response) => {
 
       // Plain text comparison since passwords aren't hashed yet
       if (password === results[0].password) {
-        res.json({ success: true, user: results[0] });
+        res.json({ success: true,
+                                            //for more safety, Only id and username are sent to the front end for more safety.
+            user: results[0].userId});      //sets the UserID in the front end
+            UserID = results[0].userId;     //sets the UserID to use in queries inside the Backend
+
       } else {
         res.status(401).json({ success: false, message: "Incorrect password" });
       }
@@ -144,9 +117,20 @@ function detectMimeType(buffer: Buffer) {
 }
 
 app.get('/api/chickenSelect', (req, res) => {
-    const query = 'SELECT * FROM chickens';
+    //const query = 'SELECT * FROM chickens';
 
-    db.query(query, (err: Error | null, results: any) => {
+    const query = `SELECT chickens.*FROM users 
+                    INNER JOIN farms
+                    ON users.farmId = farms.farmId
+                    INNER JOIN FarmZones
+                    ON farms.farmId = farmZones.farmId
+                    INNER JOIN coops
+                    ON farmZones.farmZoneId = coops.zoneId
+                    INNER JOIN chickens
+                    ON coops.coopId = chickens.coopId
+                    WHERE userId = ?`;
+
+    db.query(query, [UserID], (err: Error | null, results: any) => {
         if(err) {
             console.log("Query error:", err);
             return res.status(500).json({ error: 'Database query error' });
