@@ -397,5 +397,33 @@ app.post('/api/addCleaningLog', (req, res) => {
     });
 });
 
+//--------------------------Power team----------------------------------
+
+app.get('/api/batteryLevel', (req, res) => {
+    const query = 'SELECT batteryLevelPercent FROM batteryLevels';
+
+    db.query(query, (err: Error | null, results: any) => {
+        if(err) {
+            console.log("Query error;", err);
+            return res.status(500).json({ error: 'Database query error' });
+        }
+
+        res.json(results);
+    });
+});
+
+app.get('/api/lightLevel', (req, res) => {
+    const query = 'SELECT lightLevel FROM solarReadings';
+
+    db.query(query, (err: Error | null, results: any) => {
+        if(err) {
+            console.log("Query error;", err);
+            return res.status(500).json({ error: 'Database query error' });
+        }
+
+        res.json(results);
+    });
+});
+
 app.listen(5000, () => console.log('Server running on port 5000'));
 

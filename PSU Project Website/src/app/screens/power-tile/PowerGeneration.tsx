@@ -4,6 +4,8 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 import { Badge } from "../../components/ui/badge";
 import { useIsMobile } from "../../components/ui/use-mobile";
 import { Progress } from "../../components/ui/progress";
+import BatteryStatus from "./batteryLevel";
+import LightLevelPercentage from "./LightLevel";
 
 // Mock data
 const powerInData = [
@@ -150,11 +152,13 @@ const energyDistribution = [
 export function PowerGeneration() {
   const isMobile = useIsMobile();
     // Mock current values
-  const lightLevel = 78;
-  const batteryStatus = 85;
+  // const lightLevel = 78;
+  // const batteryStatus = 85;
   const sunrise = "05:42";
   const sunset = "18:23";
 
+  
+  
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -185,10 +189,10 @@ export function PowerGeneration() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-3xl font-bold text-slate-900">{lightLevel}%</span>
+                <span className="text-3xl font-bold text-slate-900">{LightLevelPercentage()}%</span>
                 <span className="text-sm text-slate-600">Current intensity</span>
               </div>
-              <Progress value={lightLevel} className="h-3" />
+              <Progress value={LightLevelPercentage()} className="h-3" />
             </CardContent>
           </Card>
 
@@ -231,10 +235,10 @@ export function PowerGeneration() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-3xl font-bold text-slate-900">{batteryStatus}%</span>
+              <span className="text-3xl font-bold text-slate-900">{BatteryStatus()}%</span>
               <span className="text-sm text-slate-600">Charge level</span>
             </div>
-            <Progress value={batteryStatus} className="h-3" />
+            <Progress value={BatteryStatus()} className="h-3" />
           </CardContent>
         </Card>
         {/* Power Charts */}
