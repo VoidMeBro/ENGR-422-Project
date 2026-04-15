@@ -3,6 +3,7 @@ import mysql from 'mysql2';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { Request, Response } from 'express';
+import bcrypt from 'bcrypt';
 dotenv.config();
 
 let UserID = 0; // Placeholder for user ID, can be set upon login and used in other routes as needed
@@ -38,6 +39,37 @@ const db = mysql.createConnection({
 app.post('/api/login', async (req: Request, res: Response) => {
   const { username, password } = req.body;
 
+  db.query(
+    'SELECT userId, password, username FROM users WHERE username = ?',
+    [username],
+    async (err: Error | null, results: any[]) => {  // ← add async here
+      if (err) return res.status(500).json({ error: err.message });
+
+      if (results.length === 0) {
+        return res.status(401).json({ success: false, message: "Username does not exist" });
+      }
+
+      // bcrypt compare replaces the plain === check
+      const passwordMatch = await bcrypt.compare(password, results[0].password);
+
+      if (passwordMatch) {
+        res.json({ success: true, user: results[0].userId });
+        UserID = results[0].userId;
+      } else {
+        res.status(401).json({ success: false, message: "Incorrect password" });
+      }
+    }
+  );
+});
+
+
+
+
+//====================================old login API that does not hash passwords===============================
+/*
+app.post('/api/login', async (req: Request, res: Response) => {
+  const { username, password } = req.body;
+
     db.query(
     'SELECT userId, password, username FROM users WHERE username = ?',
     [username],
@@ -66,6 +98,9 @@ app.post('/api/login', async (req: Request, res: Response) => {
     }
   );
 });
+*/
+//====================================old login API that does not hash passwords===============================
+
 
 
 app.get('/api/users', (req: Request, res: Response) => {
@@ -78,6 +113,40 @@ app.get('/api/users', (req: Request, res: Response) => {
 
 
 //--------API to register new users------------//
+app.post('/api/register', async (req: Request, res: Response) => {
+  const { firstName, lastName, username, email, password, role, institution } = req.body;
+
+  const roleMap: Record<string, number> = {
+    student: 1,
+    faculty: 2,
+    researcher: 3,
+    administrator: 4,
+    community: 5,
+    observer: 6
+  };
+  const roleId = roleMap[role.toLowerCase()] || 0;
+
+  console.log('Register payload:', { firstName, lastName, username, email, roleId, institution });
+
+  // Hash the password before storing it
+  const hashedPassword = await bcrypt.hash(password, 12);
+
+  db.query(
+    'INSERT INTO `users`(`firstName`, `lastName`, `username`, `email`, `password`, `roleID`, `institution`) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [firstName, lastName, username, email, hashedPassword, roleId, institution], // ← hashedPassword here
+    (err: Error | null) => {
+      if (err) {
+        console.error('MySQL error:', err.message);
+        return res.status(500).json({ error: err.message });
+      }
+      res.json({ success: true, message: "User registered successfully" });
+    }
+  );
+});
+
+
+//====================================old register API that does not hash passwords===============================
+/*
 app.post('/api/register', (req: Request, res: Response) => {
   const { firstName, lastName, username, email, password, role, institution } = req.body;
   const roleMap: Record<string, number> = {
@@ -104,6 +173,14 @@ const roleId = roleMap[role.toLowerCase()] || 0; // Default to 0 if role is not 
     }
   );
 });
+*/
+//====================================old login API that does not hash passwords===============================
+
+
+
+
+
+
 
 /* Chicken stuff =================================================================================================== */
 

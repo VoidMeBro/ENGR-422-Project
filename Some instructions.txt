@@ -74,7 +74,8 @@ we will need to install other packages to make use of MySQL
 4. In the search bar, type "node-red-node-mysql"
 5. install top one
 
-
+more permanent bypass: 
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 (----------------------------------)
 Connect to MYSQL using XAMPP
