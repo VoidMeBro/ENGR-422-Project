@@ -3,9 +3,11 @@ import AddChickenForm from "../../components/chickenComponents/addChickenForm";
 import EggsLayedForm from "../../components/chickenComponents/eggsLayedForm";
 import { useState } from "react";
 import ChickenProfiles from "../../components/chickenComponents/chickenProfiles";
+import ChickenHealth from "../../components/chickenComponents/chickenHealth"
 function Chicken(){
     const [hideChicken, setHideChicken] = useState(true);
     const [hideEggs, setHideEggs] = useState(true);
+    const [hideHealth, setHideHealth] = useState(true);
     const [refreshKey, setRefreshKey] = useState(0);
     return(
         <main className="chickenMain main-content">
@@ -27,6 +29,15 @@ function Chicken(){
             </div>
             {!hideEggs && <EggsLayedForm/>}
             </section>{/* End of eggs-layed form */}
+
+            <section id="log-chicken-health">
+            <div onClick={() => setHideHealth((current) => !current)} style={{userSelect:"none"}}> 
+                <h2 className={hideHealth ? "formTitlesBefore" : "formTitlesAfter"} style={{cursor:"pointer"}}>Log Chicken Checkup  
+                    <img className="formIcons" src={hideHealth ? "/chickenImages/down-arrow.svg" : "/chickenImages/up-arrow.svg"} alt=""/>
+                </h2>
+            </div>
+            {!hideHealth && <ChickenHealth/> }
+            </section>{/* End of add-chicken form */}
 
             <section id = "chicken-list">
             <div>

@@ -198,6 +198,17 @@ app.post('/api/addChickenEgg', (req, res) => {
         res.json({ message: 'Egg log added successfully' });
     })
 });
+app.post('/api/addHealthLog', (req, res) => {
+    const {rfid, observation, action, date} = req.body;
+    const query = 'INSERT INTO animalHealthLogs (rfid, observation, actionTaken, recordedAt) VALUES (?, ?, ?, ?)';
+    db.query(query, [rfid, observation, action, date], (err: Error | null, _results: any) => {
+        if(err){
+            console.log("Query error:", err);
+            return res.status(500).json({ error: 'Database query error' });
+        }
+        res.json({ message: 'Health log added successfully' });
+    })
+});
 app.post('/api/addChicken', (req, res) => {
     const {rfid,coopId,chickenName,gender,dob,species,weightKg,imageData,regDate,notes} = req.body;
 
