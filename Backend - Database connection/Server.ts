@@ -485,6 +485,51 @@ app.post('/api/addCleaningLog', (req, res) => {
     });
 });
 
+app.post('/api/addCoop', (req, res) => {
+    const { zoneId, coopName, capacity, notes, doorOpen, doorClose, reminderDate, reminderPeriod } = req.body;
+    const query = `INSERT INTO coops (zoneId, coopName, capacity, notes, doorOpen, doorClose, reminderDate, reminderPeriod) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+    db.query(query, [zoneId, coopName, capacity, notes, doorOpen, doorClose, reminderDate, reminderPeriod], (err: Error | null, results: any) => {
+        if (err) {
+            console.log("Query error:", err);
+            return res.status(500).json({ error: 'Database query error' });
+        }
+        res.json({ message: 'Coop added successfully', coopId: results.insertId });
+    });
+});
+
+app.put('/api/updateCoop/:coopId', (req, res) => {
+    const { coopId } = req.params;
+    const { zoneId, coopName, capacity, notes, doorOpen, doorClose, reminderDate, reminderPeriod } = req.body;
+    const query = `UPDATE coops SET zoneId = ?, coopName = ?, capacity = ?, notes = ?, doorOpen = ?, doorClose = ?, 
+                   reminderDate = ?, reminderPeriod = ? WHERE coopId = ?`;
+    db.query(query, [zoneId, coopName, capacity, notes, doorOpen, doorClose, reminderDate, reminderPeriod, coopId], (err: Error | null, results: any) => {
+        if (err) {
+            console.log("Query error:", err);
+            return res.status(500).json({ error: 'Database query error' });
+        }
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ error: 'Coop not found' });
+        }
+        res.json({ message: 'Coop updated successfully' });
+    });
+});
+
+app.delete('/api/deleteCoop/:coopId', (req, res) => {
+    const { coopId } = req.params;
+    const query = 'DELETE FROM coops WHERE coopId = ?';
+    db.query(query, [coopId], (err: Error | null, results: any) => {
+        if (err) {
+            console.log("Query error:", err);
+            return res.status(500).json({ error: 'Database query error' });
+        }
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ error: 'Coop not found' });
+        }
+        res.json({ message: 'Coop deleted successfully' });
+    });
+});
+
 //--------------------------Power team----------------------------------
 
 app.get('/api/batteryLevel', (req, res) => {
