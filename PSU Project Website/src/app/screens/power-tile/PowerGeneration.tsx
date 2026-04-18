@@ -6,6 +6,7 @@ import { useIsMobile } from "../../components/ui/use-mobile";
 import { Progress } from "../../components/ui/progress";
 import BatteryStatus from "./batteryLevel";
 import LightLevelPercentage from "./LightLevel";
+import {useSunData} from "./SunData";
 
 // Mock data
 const powerInData = [
@@ -154,9 +155,7 @@ export function PowerGeneration() {
     // Mock current values
   // const lightLevel = 78;
   // const batteryStatus = 85;
-  const sunrise = "05:42";
-  const sunset = "18:23";
-
+  const {sunrise, sunset} = useSunData();
   
   
   return (
