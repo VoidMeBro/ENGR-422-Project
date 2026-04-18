@@ -4,37 +4,10 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 import { Badge } from "../../components/ui/badge";
 import { useIsMobile } from "../../components/ui/use-mobile";
 import { Progress } from "../../components/ui/progress";
-import BatteryStatus from "./batteryLevel";
-import LightLevelPercentage from "./LightLevel";
+import {BatteryStatus, useBatteryData} from "./BatteryLevel";
+import {LightLevelPercentage} from "./LightLevel";
 import {useSunData} from "./SunData";
-
-// Mock data
-const powerInData = [
-  { hour: "00:00", power: 0 },
-  { hour: "01:00", power: 0 },
-  { hour: "02:00", power: 0 },
-  { hour: "03:00", power: 0 },
-  { hour: "04:00", power: 0 },
-  { hour: "05:00", power: 0 },
-  { hour: "06:00", power: 150 },
-  { hour: "07:00", power: 450 },
-  { hour: "08:00", power: 850 },
-  { hour: "09:00", power: 1200 },
-  { hour: "10:00", power: 1650 },
-  { hour: "11:00", power: 1950 },
-  { hour: "12:00", power: 2100 },
-  { hour: "13:00", power: 2050 },
-  { hour: "14:00", power: 1800 },
-  { hour: "15:00", power: 1500 },
-  { hour: "16:00", power: 1100 },
-  { hour: "17:00", power: 650 },
-  { hour: "18:00", power: 250 },
-  { hour: "19:00", power: 0 },
-  { hour: "20:00", power: 0 },
-  { hour: "21:00", power: 0 },
-  { hour: "22:00", power: 0 },
-  { hour: "23:00", power: 0 },
-];
+import { useSolarPower } from "./SolarPower";
 
 // Mock data for Power Out (Wh) hourly
 const powerOutData = [
@@ -152,11 +125,9 @@ const energyDistribution = [
 
 export function PowerGeneration() {
   const isMobile = useIsMobile();
-    // Mock current values
-  // const lightLevel = 78;
-  // const batteryStatus = 85;
   const {sunrise, sunset} = useSunData();
-  
+  const { chartData, loading } = useSolarPower();
+  const { batteryLevelData, isBatteryLoading, batteryError} = useBatteryData(1);
   
   return (
     <div className="space-y-6">
@@ -246,14 +217,14 @@ export function PowerGeneration() {
           <Card>
             <CardHeader>
               <CardTitle>Power In (Wh) - Hourly</CardTitle>
-              <CardDescription>Solar power generation throughout the day</CardDescription>
+              <CardDescription>{loading? "Fetching live readings..." : "Live solar generation from database"}</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={powerInData}>
+                <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis
-                    dataKey="hour"
+                    dataKey="time"
                     stroke="#64748b"
                     fontSize={12}
                     interval={isMobile ? 5 : 2}
@@ -277,6 +248,7 @@ export function PowerGeneration() {
                     strokeWidth={2}
                     name="Power In"
                     dot={false}
+                    animationDuration={1500}
                   />
                 </LineChart>
               </ResponsiveContainer>

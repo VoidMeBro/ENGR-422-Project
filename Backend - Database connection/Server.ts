@@ -533,7 +533,7 @@ app.delete('/api/deleteCoop/:coopId', (req, res) => {
 //--------------------------Power team----------------------------------
 
 app.get('/api/batteryLevel', (req, res) => {
-    const query = 'SELECT batteryLevelPercent FROM batteryLevels';
+    const query = 'SELECT batteryLevelPercent FROM batteryLevels ORDER BY batteryLevelId DESC LIMIT 1';
 
     db.query(query, (err: Error | null, results: any) => {
         if(err) {
@@ -554,6 +554,54 @@ app.get('/api/lightLevel', (req, res) => {
             return res.status(500).json({ error: 'Database query error' });
         }
 
+        res.json(results);
+    });
+});
+
+
+app.get('/api/solar-hourly', (req: Request, res: Response) => {
+    // 1. We ORDER BY DESC to get the newest data first
+    // 2. We LIMIT 24 to get the last 24 hours recorded
+    const query = `
+        SELECT 
+            DATE_FORMAT(takenAt, '%Y-%m-%d %H:00:00') AS hour_bucket, 
+            AVG(powerGeneratedKw) AS avg_power
+        FROM solarreadings 
+        GROUP BY hour_bucket
+        ORDER BY hour_bucket DESC 
+        LIMIT 24;
+    `;
+
+    db.query(query, (err: Error | null, results: any) => {
+        if (err) {
+            console.error("Database Error:", err);
+            return res.status(500).json({ error: 'Database query error' });
+        }
+        
+        // Reverse the results so the chart reads Left -> Right (Oldest -> Newest)
+        const chronologicalData = Array.isArray(results) ? [...results].reverse() : [];
+        res.json(chronologicalData);
+    });
+});
+
+app.get('/api/batteryLevel-everyTenMinutes', (req: Request, res: Response) => {
+const batteryId = req.query.id; 
+
+    const query = `
+        SELECT 
+            FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(takenAt) / 600) * 600) AS intervalTime,
+            AVG(batteryLevelPercent) as avgLevel
+        FROM batteryLevels
+        WHERE batteryId = ? 
+        GROUP BY intervalTime
+        ORDER BY intervalTime ASC
+    `;
+
+    db.query(query, [batteryId], (err: Error | null, results: any) => {
+        if (err) {
+            console.error("Database Error:", err);
+            return res.status(500).json({ error: 'Database query error' });
+        }
         res.json(results);
     });
 });
