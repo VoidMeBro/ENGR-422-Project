@@ -87,7 +87,7 @@ function Chicken_dashboard() {
                 <ChickenKPI text="Movement Events:" kpiValue={data.movement}/>
             </section>
 
-            <section id="chart-container">
+            <section id="chart-container" style={{ marginBottom: "40px" }}>
                 <GraphContainer 
                     containerID="egg-production" 
                     title="Egg Production Over Time" 
@@ -111,7 +111,7 @@ function Chicken_dashboard() {
             </section>
 
           
-            <section id="export">
+            <section id="export" style={{ marginTop: "40px" }}>
                 <h2>Data Management</h2>
                 <hr className="graph-hr"/>
 
