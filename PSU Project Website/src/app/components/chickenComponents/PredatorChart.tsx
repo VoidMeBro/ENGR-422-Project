@@ -40,19 +40,29 @@ function PredatorChart() {
     }, []);
 
     return (
-        <div style={{ width: "100%", height: 300 }}>
+        <div style={{ width: "100%", height: 400, marginBottom: "40px" }}>
             <ResponsiveContainer>
-                <LineChart data={data}>
+                <LineChart data={data}   margin={{ top: 10, right: 30, left: 20, bottom: 20 }}>
                     <CartesianGrid stroke="#2c2c2c" />
-                    <XAxis dataKey="date" stroke="#aaa" />
-                    <YAxis stroke="#aaa" />
+                    <XAxis  dataKey="date" 
+                        stroke="#aaa"
+                        angle={-30}
+                        textAnchor="end"
+                        height={70}
+                         />
+                    <YAxis stroke="#aaa" domain={[0, 'dataMax + 10']}  />
                     <Tooltip />
                     <Line 
-                        type="monotone" 
+                                              
+                        type="monotone"
                         dataKey="count" 
-                        stroke="#FF5722" 
+                        stroke="#FF5722"
                         strokeWidth={3}
-                    />
+                        dot={{ r: 5 }}
+                        activeDot={{ r: 8 }}
+                        isAnimationActive={true}
+                        animationDuration={800}
+                       />
                 </LineChart>
             </ResponsiveContainer>
         </div>
