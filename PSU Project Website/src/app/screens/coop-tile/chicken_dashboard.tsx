@@ -7,7 +7,7 @@ import PredatorChart from "../../components/chickenComponents/PredatorChart";
 import MovementChart from "../../components/chickenComponents/MovementChart";
 
 function Chicken_dashboard() {
-
+    const[videoOn, setVideoOn] = useState(false);
     const [data, setData] = useState({
         chickens: 0,
         weeklyEggs: 0,
@@ -85,6 +85,15 @@ function Chicken_dashboard() {
                 <ChickenKPI text="This Week's Egg Production:" kpiValue={data.weeklyEggs}/>
                 <ChickenKPI text="Predator Incidents:" kpiValue={data.predatorIncidents}/>
                 <ChickenKPI text="Movement Events:" kpiValue={data.movement}/>
+            </section>
+
+            <section id="Chicken-Video-Container">
+                <button id="Chicken-Video-Button" onClick={() => setVideoOn(!videoOn)}>
+                    {videoOn ? "Hide Video" : "Show Video"}
+                </button>
+                {videoOn && (
+                    <img id="Chicken-Video" src="/api/chickenAiStream" alt="Stream Down" />
+                )}
             </section>
 
             <section id="chart-container" style={{ marginBottom: "40px" }}>

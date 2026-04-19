@@ -4,6 +4,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
+import fetch from 'node-fetch';
 dotenv.config();
 
 let UserID = 0; // Placeholder for user ID, can be set upon login and used in other routes as needed
@@ -185,6 +186,16 @@ const roleId = roleMap[role.toLowerCase()] || 0; // Default to 0 if role is not 
 /* Chicken stuff =================================================================================================== */
 
 /* Chicken queries */
+
+const PI_STREAM = process.env.Chicken_PI_STREAM_URL;
+
+app.get('/api/chickenAiStream', async (req: Request, res: Response) => {
+    if (!PI_STREAM) { res.status(500).json({ error: 'PI_STREAM_URL not configured' }); return; }
+    const upstream = await fetch(PI_STREAM);
+    
+    res.setHeader('Content-Type', 'multipart/x-mixed-replace; boundary=frame');
+    upstream.body!.pipe(res);
+});
 
 function detectMimeType(buffer: Buffer) {
     if (buffer[0] === 0xFF && buffer[1] === 0xD8) return 'image/jpeg';
