@@ -7,128 +7,27 @@ import { Progress } from "../../components/ui/progress";
 import {BatteryStatus, useBatteryData} from "./BatteryLevel";
 import {LightLevelPercentage} from "./LightLevel";
 import {useSunData} from "./SunData";
-import { useSolarPower } from "./SolarPower";
-
-// Mock data for Power Out (Wh) hourly
-const powerOutData = [
-  { hour: "00:00", power: 120 },
-  { hour: "01:00", power: 100 },
-  { hour: "02:00", power: 95 },
-  { hour: "03:00", power: 90 },
-  { hour: "04:00", power: 95 },
-  { hour: "05:00", power: 150 },
-  { hour: "06:00", power: 300 },
-  { hour: "07:00", power: 450 },
-  { hour: "08:00", power: 650 },
-  { hour: "09:00", power: 850 },
-  { hour: "10:00", power: 1050 },
-  { hour: "11:00", power: 1200 },
-  { hour: "12:00", power: 1350 },
-  { hour: "13:00", power: 1400 },
-  { hour: "14:00", power: 1300 },
-  { hour: "15:00", power: 1100 },
-  { hour: "16:00", power: 900 },
-  { hour: "17:00", power: 700 },
-  { hour: "18:00", power: 500 },
-  { hour: "19:00", power: 350 },
-  { hour: "20:00", power: 250 },
-  { hour: "21:00", power: 200 },
-  { hour: "22:00", power: 150 },
-  { hour: "23:00", power: 130 },
-];
-
-// Mock data for Battery Level (%) every 10 minutes
-const batteryLevelData = [
-  { time: "00:00", level: 85 },
-  { time: "00:10", level: 84 },
-  { time: "00:20", level: 83 },
-  { time: "00:30", level: 82 },
-  { time: "00:40", level: 81 },
-  { time: "00:50", level: 80 },
-  { time: "01:00", level: 79 },
-  { time: "01:10", level: 78 },
-  { time: "01:20", level: 77 },
-  { time: "01:30", level: 76 },
-  { time: "01:40", level: 75 },
-  { time: "01:50", level: 74 },
-  { time: "02:00", level: 73 },
-  { time: "02:10", level: 72 },
-  { time: "02:20", level: 71 },
-  { time: "02:30", level: 70 },
-  { time: "02:40", level: 69 },
-  { time: "02:50", level: 68 },
-  { time: "03:00", level: 67 },
-  { time: "03:10", level: 66 },
-  { time: "03:20", level: 65 },
-  { time: "03:30", level: 65 },
-  { time: "03:40", level: 64 },
-  { time: "03:50", level: 63 },
-  { time: "04:00", level: 62 },
-  { time: "04:10", level: 61 },
-  { time: "04:20", level: 61 },
-  { time: "04:30", level: 60 },
-  { time: "04:40", level: 60 },
-  { time: "04:50", level: 59 },
-  { time: "05:00", level: 59 },
-  { time: "05:10", level: 59 },
-  { time: "05:20", level: 59 },
-  { time: "05:30", level: 58 },
-  { time: "05:40", level: 58 },
-  { time: "05:50", level: 58 },
-  { time: "06:00", level: 58 },
-  { time: "06:10", level: 59 },
-  { time: "06:20", level: 60 },
-  { time: "06:30", level: 61 },
-  { time: "06:40", level: 62 },
-  { time: "06:50", level: 63 },
-  { time: "07:00", level: 64 },
-  { time: "07:10", level: 65 },
-  { time: "07:20", level: 66 },
-  { time: "07:30", level: 67 },
-  { time: "07:40", level: 68 },
-  { time: "07:50", level: 70 },
-  { time: "08:00", level: 71 },
-  { time: "08:10", level: 73 },
-  { time: "08:20", level: 74 },
-  { time: "08:30", level: 76 },
-  { time: "08:40", level: 77 },
-  { time: "08:50", level: 79 },
-  { time: "09:00", level: 80 },
-  { time: "09:10", level: 82 },
-  { time: "09:20", level: 83 },
-  { time: "09:30", level: 85 },
-  { time: "09:40", level: 86 },
-  { time: "09:50", level: 88 },
-  { time: "10:00", level: 89 },
-  { time: "10:10", level: 91 },
-  { time: "10:20", level: 92 },
-  { time: "10:30", level: 93 },
-  { time: "10:40", level: 94 },
-  { time: "10:50", level: 95 },
-  { time: "11:00", level: 96 },
-  { time: "11:10", level: 97 },
-  { time: "11:20", level: 98 },
-  { time: "11:30", level: 98 },
-  { time: "11:40", level: 99 },
-  { time: "11:50", level: 99 },
-  { time: "12:00", level: 100 },
-];
-
-// Energy distribution for farm operations
-const energyDistribution = [
-  { name: "Chicken Coop", value: 25, color: "#f59e0b" },
-  { name: "Irrigation", value: 35, color: "#3b82f6" },
-  { name: "Other", value: 5, color: "#6b7280" },
-  { name: "Processing", value: 25, color: "#10b981" },
-  { name: "Lightning", value: 10, color: "#8b5cf6" },
-];
+import { useSolarPower, useZonePower, powerOutFunction } from "./SolarPower";
+import { useMemo } from "react";
 
 export function PowerGeneration() {
   const isMobile = useIsMobile();
-  const {sunrise, sunset} = useSunData();
+  const { sunrise: sunriseTime, sunset: sunsetTime } = useSunData();
   const { chartData, loading } = useSolarPower();
+  const { powerOutChartData, powerOutLoading} = powerOutFunction();
   const { batteryLevelData, isBatteryLoading, batteryError} = useBatteryData(1);
+  const { rawData, energyDistributionloading } = useZonePower(10000);
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
   
+const energyDistribution = useMemo(() => {
+    return rawData.map((item, index) => ({
+      name: item.zoneName,
+      value: item.totalPower, // Raw value for Pie slice sizing
+      displayPercent: item.percentage, // Pre-calculated percentage from hook
+      color: COLORS[index % COLORS.length]
+    }));
+  }, [rawData]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -179,7 +78,7 @@ export function PowerGeneration() {
                   </div>
                   <div>
                     <p className="text-xs text-slate-600">Sunrise</p>
-                    <p className="text-2xl font-bold text-slate-900">{sunrise}</p>
+                    <p className="text-2xl font-bold text-slate-900">{sunriseTime}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -188,7 +87,7 @@ export function PowerGeneration() {
                   </div>
                   <div>
                     <p className="text-xs text-slate-600">Sunset</p>
-                    <p className="text-2xl font-bold text-slate-900">{sunset}</p>
+                    <p className="text-2xl font-bold text-slate-900">{sunsetTime}</p>
                   </div>
                 </div>
               </div>
@@ -259,14 +158,14 @@ export function PowerGeneration() {
           <Card>
             <CardHeader>
               <CardTitle>Power Out (Wh) - Hourly</CardTitle>
-              <CardDescription>Power consumption throughout the day</CardDescription>
+              <CardDescription>{powerOutLoading? "Fetching live readings..." : "Power consumption throughout the day"}</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={powerOutData}>
+                <LineChart data={powerOutChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis
-                    dataKey="hour"
+                    dataKey="time"
                     stroke="#64748b"
                     fontSize={12}
                     interval={isMobile ? 5 : 2}
@@ -352,7 +251,9 @@ export function PowerGeneration() {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={isMobile ? false : ({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  label={isMobile ? false : (props) => {
+                    return `${props.name}: ${Number(props.payload.displayPercent).toFixed(1)}%`;
+                    }}
                     outerRadius={isMobile ? 70 : 100}
                     fill="#8884d8"
                     dataKey="value"
@@ -361,20 +262,35 @@ export function PowerGeneration() {
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  {/* 2. Tooltip: Shows Name, raw kW, and % when you hover */}
+                  <Tooltip 
+                    formatter={(value: number, name: string, props: any) => [`${value} kW (${Number(props.payload.displayPercent).toFixed(1)}%)`, name]}
+                    contentStyle={{
+                      backgroundColor: '#fff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px'}}
+                    />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {energyDistribution.map((entry) => (
-                  <div key={entry.name} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.color }}></span>
-                      <span className="truncate text-slate-700">{entry.name}</span>
-                    </div>
-                    <span className="font-medium text-slate-900">{entry.value}%</span>
-                  </div>
-                ))}
-              </div>
+<div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+  {/* Add a loading check for the distribution specifically */}
+  {energyDistributionloading ? (
+    <p className="text-sm text-slate-500">Loading zones...</p>
+  ) : (
+    energyDistribution.map((entry) => (
+      <div key={entry.name} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.color }}></span>
+          <span className="truncate text-slate-700">{entry.name}</span>
+        </div>
+        {/* Use the fixed percentage from the hook */}
+        <span className="font-medium text-slate-900">
+          {Number(entry.displayPercent).toFixed(1)}%
+        </span>
+      </div>
+    ))
+  )}
+</div>
             </CardContent>
           </Card>
         </div>

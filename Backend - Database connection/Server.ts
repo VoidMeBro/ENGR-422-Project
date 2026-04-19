@@ -584,6 +584,30 @@ app.get('/api/solar-hourly', (req: Request, res: Response) => {
     });
 });
 
+app.get('/api/power-out', (req: Request, res: Response) => {
+
+    const query = `
+        SELECT 
+            DATE_FORMAT(takenAt, '%Y-%m-%d %H:00:00') AS per_hour, 
+            AVG(powerUsageKw) AS average_power
+        FROM powerOutputLogs 
+        GROUP BY per_hour
+        ORDER BY per_hour DESC 
+        LIMIT 24;
+    `;
+
+    db.query(query, (err: Error | null, results: any) => {
+        if (err) {
+            console.error("Database Error:", err);
+            return res.status(500).json({ error: 'Database query error' });
+        }
+        
+        // Reverse the results so the chart reads Left -> Right (Oldest -> Newest)
+        const chronologicalData = Array.isArray(results) ? [...results].reverse() : [];
+        res.json(chronologicalData);
+    });
+});
+
 app.get('/api/batteryLevel-everyTenMinutes', (req: Request, res: Response) => {
 const batteryId = req.query.id; 
 
@@ -602,6 +626,32 @@ const batteryId = req.query.id;
             console.error("Database Error:", err);
             return res.status(500).json({ error: 'Database query error' });
         }
+        res.json(results);
+    });
+});
+
+app.get('/api/zone-power-usage', (req: Request, res: Response) => {
+    // 1. We JOIN the zones with their logs using destinationZoneId
+    // 2. We SUM the powerUsageKw to get the total per zone
+    // 3. We GROUP BY the zone name for the Pie Chart labels
+    const query = `
+        SELECT 
+            fz.zoneName, 
+            SUM(pol.powerUsageKw) AS totalPower
+        FROM farmZones fz
+        INNER JOIN powerOutputLogs pol ON fz.farmZoneId = pol.destinationZoneId
+        GROUP BY fz.zoneName
+        ORDER BY totalPower DESC;
+    `;
+
+    db.query(query, (err: Error | null, results: any) => {
+        if (err) {
+            console.error("Database Error:", err);
+            return res.status(500).json({ error: 'Database query error' });
+        }
+
+        // Return the results directly for the Pie Chart
+        // Expected format: [{ zoneName: 'Zone A', totalPower: 500 }, ...]
         res.json(results);
     });
 });
