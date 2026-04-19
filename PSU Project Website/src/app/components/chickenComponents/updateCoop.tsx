@@ -14,13 +14,12 @@ interface UpdateCoopProps {
 }
 
 function UpdateCoop( coopId: string, zoneId: string, coopName: string, capacity: string, notes: string, doorOpen: string, doorClose: string, reminderDate: string, reminderPeriod: string ) {
-    try{fetch(`/api/updateCoop`, {
+    try{fetch(`/api/updateCoop/${coopId}`, {
         method: "PUT",
         headers: {
             "Content-Type": "application/json",
         },
         body: JSON.stringify({
-            coopId,
             zoneId,
             coopName,
             capacity,
@@ -37,29 +36,37 @@ function UpdateCoop( coopId: string, zoneId: string, coopName: string, capacity:
 }
 
 function deleteCoop(coopId: number) {
-    try{fetch(`/api/deleteCoop`, {
+    try{fetch(`/api/deleteCoop/${coopId}`, {
         method: "DELETE",
         headers: {
             "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ coopId }),
+        }
     });}
     catch(err){
         console.error("Network error:", err);
     }
 
 }
+
+function parseReminderDateTime(value: string): { datePart: string; timePart: string } {
+    const [rawDate = "", rawTime = ""] = value.trim().split(/[ T]/);
+    const datePart = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : "";
+    const timePart = /^\d{2}:\d{2}/.test(rawTime) ? rawTime.slice(0, 5) : "";
+
+    return { datePart, timePart };
+}
     
 
 function UpdateCoopForm({coopId, zoneId, coopName, capacity, notes, doorOpen, doorClose, reminderDate, reminderPeriod, setSubmitted}: UpdateCoopProps) {
+    const parsedReminder = parseReminderDateTime(reminderDate);
     const [errors, setErrors] = useState<{ coopName?: string; capacity?: string; notes?: string; doorOpen?: string; doorClose?: string; reminderDate?: string; reminderTime?: string; reminderPeriod?: string}>({});
     const [coopNameInput, setCoopNameInput] = useState(coopName);
     const [capacityInput, setCapacityInput] = useState(capacity);
     const [notesInput, setNotesInput] = useState(notes);
     const [doorOpenInput, setDoorOpenInput] = useState(doorOpen);
     const [doorCloseInput, setDoorCloseInput] = useState(doorClose);
-    const [reminderDateInput, setReminderDateInput] = useState(reminderDate);
-    const [reminderTimeInput, setReminderTimeInput] = useState(reminderDate.split("T")[1] ? reminderDate.split("T")[1].slice(0,5) : ""); 
+    const [reminderDateInput, setReminderDateInput] = useState(parsedReminder.datePart);
+    const [reminderTimeInput, setReminderTimeInput] = useState(parsedReminder.timePart);
     const [reminderPeriodInput, setReminderPeriodInput] = useState(reminderPeriod);
     
     const valid = ():boolean => {
@@ -71,9 +78,15 @@ function UpdateCoopForm({coopId, zoneId, coopName, capacity, notes, doorOpen, do
         else if (doorOpenInput !== "" && new Date(`1970-01-01T${doorOpenInput}`) >= new Date(`1970-01-01T${doorCloseInput}`)) 
             newErrors.doorClose = "Door close time must be after door open time.";
         if (reminderDateInput === "") newErrors.reminderDate = "Please enter a reminder date.";
-            else if (new Date(reminderDateInput) < new Date()) newErrors.reminderDate = "Reminder date cannot be in the past.";
         if (reminderTimeInput === "") newErrors.reminderTime = "Please enter a reminder time.";
-        else if (new Date(`${reminderDateInput}T${reminderTimeInput}`) < new Date()) newErrors.reminderTime = "Reminder time cannot be in the past.";
+        if (reminderDateInput !== "" && reminderTimeInput !== "") {
+            const reminderDateTime = new Date(`${reminderDateInput}T${reminderTimeInput}`);
+            if (Number.isNaN(reminderDateTime.getTime())) {
+                newErrors.reminderTime = "Please enter a valid reminder time.";
+            } else if (reminderDateTime < new Date()) {
+                newErrors.reminderTime = "Reminder time cannot be in the past.";
+            }
+        }
         if (reminderPeriodInput <= 0 || typeof reminderPeriodInput === "string") newErrors.reminderPeriod = "Reminder period must be a positive number.";
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -83,7 +96,8 @@ function UpdateCoopForm({coopId, zoneId, coopName, capacity, notes, doorOpen, do
         e.preventDefault();
         setSubmitted(true);
         if (valid()) {
-            UpdateCoop(coopId.toLocaleString(), zoneId.toLocaleString(), coopNameInput, capacityInput.toLocaleString(), notesInput, doorOpenInput, doorCloseInput, reminderDateInput, reminderPeriodInput.toLocaleString());
+            const reminderDateTimeValue = `${reminderDateInput} ${reminderTimeInput}`;
+            UpdateCoop(coopId.toLocaleString(), zoneId.toLocaleString(), coopNameInput, capacityInput.toLocaleString(), notesInput, doorOpenInput, doorCloseInput, reminderDateTimeValue, reminderPeriodInput.toLocaleString());
             alert("Coop updated successfully!");
             setSubmitted(true);
         }
@@ -102,7 +116,7 @@ function UpdateCoopForm({coopId, zoneId, coopName, capacity, notes, doorOpen, do
     };
 
     return (
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="update-coop-form">
             <label htmlFor="coop-name">Coop Name:</label>
             <input type="text" id="coop-name" value={coopNameInput} onChange={(e) => setCoopNameInput(e.target.value)} placeholder="Coop Name" 
             className={errors.coopName ? "errorBorder" : ""}/>
@@ -121,7 +135,7 @@ function UpdateCoopForm({coopId, zoneId, coopName, capacity, notes, doorOpen, do
             <input type="time" id="door-close" value={doorCloseInput} onChange={(e) => setDoorCloseInput(e.target.value)} className={errors.doorClose ? "errorBorder" : ""}/>
             {errors.doorClose && <span className="formError">{errors.doorClose}</span>}
             <label htmlFor="reminder-date">Reminder Date:</label>
-            <input type="datetime-local" id="reminder-date" value={reminderDateInput} onChange={(e) => setReminderDateInput(e.target.value)} className={errors.reminderDate ? "errorBorder" : ""}/>
+            <input type="date" id="reminder-date" value={reminderDateInput} onChange={(e) => setReminderDateInput(e.target.value)} className={errors.reminderDate ? "errorBorder" : ""}/>
             {errors.reminderDate && <span className="formError">{errors.reminderDate}</span>}
             <label htmlFor="reminder-time">Reminder Time:</label>
             <input type="time" id="reminder-time" value={reminderTimeInput} onChange={(e) => setReminderTimeInput(e.target.value)} className={errors.reminderTime ? "errorBorder" : ""}/>

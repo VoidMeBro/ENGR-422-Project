@@ -46,7 +46,7 @@
 .formTitlesBefore{
     background-color: rgb(217, 217, 217,0.38);
     border-radius: 15px;
-    box-shadow: -4px 0px 0px rgba(0, 87, 6, 0.94);
+    border-left: 4px solid rgba(0, 87, 6, 0.94);
     padding: 0.5% 0% 0.5% 2%;
     margin-top: 1%;
 }
@@ -54,7 +54,7 @@
     background-color: rgb(217, 217, 217,0.38);
     border-top-right-radius: 25px;
     border-top-left-radius: 25px;
-    box-shadow: -4px 0px 0px rgba(0, 87, 6, 0.94);
+    border-left: 4px solid rgba(0, 87, 6, 0.94);
     padding: 0.5% 0% 0% 2%;
     margin-top: 1%;
 }
@@ -62,7 +62,7 @@
     background-color: rgb(217, 217, 217,0.38);
     display: flex;
     flex-direction: column;
-    box-shadow: -4px 0px 0px rgba(0, 87, 6, 0.94);
+    border-left: 4px solid rgba(0, 87, 6, 0.94);
 }
 #add-chicken-form label, #log-eggs-form label{
     margin-bottom: 3px;
@@ -121,4 +121,50 @@
     margin: 0 auto;
     min-width: none;
     overflow: auto;
+}
+
+#log-health-form{
+    background-color: rgb(217, 217, 217,0.38);
+    display: flex;
+    flex-direction: column;
+    border-left: 4px solid rgba(0, 87, 6, 0.94);
+    padding: 1%;
+    margin-bottom: 1%;
+    border-radius: 0px 0px 8px 8px;
+}
+
+#log-health-form label{
+    margin-bottom: 3px;
+    font-weight: 600;
+    color: rgb(44, 44, 44);
+}
+
+#log-health-form input,
+#log-health-form select,
+#log-health-form textarea,
+#log-health-form button{
+    border: none;
+    border-radius: 5px;
+    padding: 8px 10px;
+    margin-bottom: 15px;
+    background-color: white;
+}
+
+#log-health-form textarea{
+    min-height: 80px;
+    resize: vertical;
+}
+
+#log-health-form button{
+    background-color: rgb(0, 87, 6, 0.94);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 0.5%;
+    padding: 10px;
+    font-size: medium;
+}
+
+#log-health-form button:hover{
+    filter: brightness(0.95);
 }
