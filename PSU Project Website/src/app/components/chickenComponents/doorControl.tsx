@@ -9,7 +9,7 @@ interface doorControlProps {
 }
 function updateDoorTimes(coopId: number, openTime: string, closeTime: string) {
     /* Database call to update door times for the coop with the given coopId */
-    fetch(`/updateDoorTimes`, {
+    fetch(`/api/updateDoorTimes`, {
         method: "PUT",
         headers: {
             "Content-Type": "application/json",
@@ -66,7 +66,6 @@ function DoorControl({ doorState, setDoorState, times , setOpenTime, setCloseTim
             setCloseTime(doorCloseTime)
             setErrors({});
             setSubmitted(false);
-            updateDoorTimes(coopId, doorOpenTime, doorCloseTime);
         }
     }
 
