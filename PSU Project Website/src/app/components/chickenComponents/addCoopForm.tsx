@@ -1,5 +1,5 @@
 import e from 'cors';
-import {useState, useEffect} from 'react'
+import {useState, useEffect, useRef} from 'react'
 
 async function addCoop(zoneId: string, coopName: string, capacity: string, notes: string,
         openTime: string, closeTime: string, reminderDate: string, reminderPeriod: string, reminderTime: string): Promise<void> {
@@ -36,16 +36,26 @@ async function addCoop(zoneId: string, coopName: string, capacity: string, notes
 function AddCoopForm(){
     const [zoneId, setZoneId] = useState(3);
     const [coopName, setCoopName] = useState("");
-    const [capacity, setCapacity] = useState(0);
+    const [capacity, setCapacity] = useState<number | "">(0);
     const [notes, setNotes] = useState("");
     const [openTime,setOpenTime]=useState("");
     const [closeTime,setCloseTime]=useState("");
     const [reminderTime, setReminderTime] = useState("")
     const [reminderDate, setReminderDate] = useState("");
-    const [reminderPeriod, setReminderPeriod] = useState(0);
+    const [reminderPeriod, setReminderPeriod] = useState<number | "">(0);
     const [errors, setErrors] = useState<{zoneId?: string; coopName?: string; capacity?: string; notes?: string;
         openTime?: string; closeTime?: string; reminderDate?: string; reminderPeriod?: string; reminderTime?: string}>({});
     const [submitted, setSubmitted] = useState(false);
+    const formRef = useRef<HTMLFormElement>(null);
+    const clickedInsideRef = useRef(false);
+
+    useEffect(() => {
+        const onMouseDown = (e: MouseEvent) => {
+            clickedInsideRef.current = !!(formRef.current && formRef.current.contains(e.target as Node));
+        };
+        document.addEventListener('mousedown', onMouseDown);
+        return () => document.removeEventListener('mousedown', onMouseDown);
+    }, []);
 
     const valid = ():boolean => {
         const  newErrors: {zoneId?: string; coopName?: string; capacity?: string; notes?: string;
@@ -101,7 +111,10 @@ function AddCoopForm(){
     }
 
     const handleBlur = (e: React.FocusEvent<HTMLFormElement>) => {
-    if ((e.relatedTarget as HTMLElement)?.id === "submit-new-coop") return;
+        if (clickedInsideRef.current) {
+            clickedInsideRef.current = false;
+            return;
+        }
         if (!e.currentTarget.contains(e.relatedTarget as Node)) {
             setZoneId(3);
             setCapacity(0);
@@ -117,49 +130,45 @@ function AddCoopForm(){
     };
 
     return( 
-        <form onSubmit={handleSubmit} onBlur={handleBlur} className="add-coop-form">
-            {/* <label> Zone ID:
-                <input type="number" value={zoneId} onChange={(e) => setZoneId(Number(e.target.value))} min={1} />
-                {errors.zoneId && <span className="formError">{errors.zoneId}</span>}   
-            </label> */}
-            <label> Coop Name:
-                <input type="text" value={coopName} onChange={(e) => setCoopName(e.target.value)} 
+        <form ref={formRef} onSubmit={handleSubmit} onBlur={handleBlur} className="add-coop-form">
+            <label htmlFor="add-coop-name">Coop Name:</label>
+            <input type="text" id="add-coop-name" value={coopName} onChange={(e) => setCoopName(e.target.value)} 
                 className={errors.coopName ? "errorBorder" : ""} />
-                {errors.coopName && <span className="formError">{errors.coopName}</span>}
-            </label>
-            <label> Capacity:
-                <input type="number" value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} min={1} 
+            {errors.coopName && <span className="formError">{errors.coopName}</span>}
+
+            <label htmlFor="add-capacity">Capacity:</label>
+            <input type="number" id="add-capacity" value={capacity} onChange={(e) => setCapacity(e.target.value === "" ? "" : Number(e.target.value))} min={1}
                 className={errors.capacity ? "errorBorder" : ""} />
-                {errors.capacity && <span className="formError">{errors.capacity}</span>}
-            </label>
-            <label> Notes:
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </label>
-            <label> Door Open Time:
-                <input type="time" value={openTime} onChange={(e) => setOpenTime(e.target.value)} 
+            {errors.capacity && <span className="formError">{errors.capacity}</span>}
+
+            <label htmlFor="add-notes">Notes:</label>
+            <textarea id="add-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+
+            <label htmlFor="add-door-open">Door Open Time:</label>
+            <input type="time" id="add-door-open" value={openTime} onChange={(e) => setOpenTime(e.target.value)}
                 className={errors.openTime ? "errorBorder" : ""} />
-                {errors.openTime && <span className="formError">{errors.openTime}</span>}
-            </label>
-            <label> Door Close Time:
-                <input type="time" value={closeTime} onChange={(e) => setCloseTime(e.target.value)} 
+            {errors.openTime && <span className="formError">{errors.openTime}</span>}
+
+            <label htmlFor="add-door-close">Door Close Time:</label>
+            <input type="time" id="add-door-close" value={closeTime} onChange={(e) => setCloseTime(e.target.value)}
                 className={errors.closeTime ? "errorBorder" : ""} />
-                {errors.closeTime && <span className="formError">{errors.closeTime}</span>}
-            </label>
-            <label> Reminder Date:
-                <input type="date" value={reminderDate} onChange={(e) => setReminderDate(e.target.value)} 
+            {errors.closeTime && <span className="formError">{errors.closeTime}</span>}
+
+            <label htmlFor="add-reminder-date">Reminder Date:</label>
+            <input type="date" id="add-reminder-date" value={reminderDate} onChange={(e) => setReminderDate(e.target.value)}
                 className={errors.reminderDate ? "errorBorder" : ""} />
-                {errors.reminderDate && <span className="formError">{errors.reminderDate}</span>}
-            </label>
-            <label> Reminder Time:
-                <input type="time" value={reminderTime} onChange={(e) => setReminderTime(e.target.value)} 
+            {errors.reminderDate && <span className="formError">{errors.reminderDate}</span>}
+
+            <label htmlFor="add-reminder-time">Reminder Time:</label>
+            <input type="time" id="add-reminder-time" value={reminderTime} onChange={(e) => setReminderTime(e.target.value)}
                 className={errors.reminderTime ? "errorBorder" : ""} />
-                {errors.reminderTime && <span className="formError">{errors.reminderTime}</span>}
-            </label>
-            <label> Reminder Period (days):
-                <input type="number" value={reminderPeriod} onChange={(e) => setReminderPeriod(Number(e.target.value))} min={1} 
+            {errors.reminderTime && <span className="formError">{errors.reminderTime}</span>}
+
+            <label htmlFor="add-reminder-period">Reminder Period (days):</label>
+            <input type="number" id="add-reminder-period" value={reminderPeriod} onChange={(e) => setReminderPeriod(e.target.value === "" ? "" : Number(e.target.value))} min={1}
                 className={errors.reminderPeriod ? "errorBorder" : ""} />
-                {errors.reminderPeriod && <span className="formError">{errors.reminderPeriod}</span>}
-            </label>
+            {errors.reminderPeriod && <span className="formError">{errors.reminderPeriod}</span>}
+
             <button type="submit" id="submit-new-coop">Add Coop</button>
         </form>
     )

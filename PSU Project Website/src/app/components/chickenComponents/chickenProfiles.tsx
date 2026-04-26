@@ -133,7 +133,7 @@ function ChickenProfiles({ refreshKey }: { refreshKey: number }){
     };
 
     const toImageSrc = (imageData: string | null): string => {
-        if (!imageData) return "/placeholder-chicken.png";
+        if (!imageData) return "/chickenImages/ChickenFiller.png";
         return imageData;
     };
 

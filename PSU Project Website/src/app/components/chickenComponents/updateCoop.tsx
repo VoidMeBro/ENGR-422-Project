@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 interface UpdateCoopProps {
     coopId: number;
@@ -61,13 +61,23 @@ function UpdateCoopForm({coopId, zoneId, coopName, capacity, notes, doorOpen, do
     const parsedReminder = parseReminderDateTime(reminderDate);
     const [errors, setErrors] = useState<{ coopName?: string; capacity?: string; notes?: string; doorOpen?: string; doorClose?: string; reminderDate?: string; reminderTime?: string; reminderPeriod?: string}>({});
     const [coopNameInput, setCoopNameInput] = useState(coopName);
-    const [capacityInput, setCapacityInput] = useState(capacity);
+    const [capacityInput, setCapacityInput] = useState<number | "">(capacity);
     const [notesInput, setNotesInput] = useState(notes);
     const [doorOpenInput, setDoorOpenInput] = useState(doorOpen);
     const [doorCloseInput, setDoorCloseInput] = useState(doorClose);
     const [reminderDateInput, setReminderDateInput] = useState(parsedReminder.datePart);
     const [reminderTimeInput, setReminderTimeInput] = useState(parsedReminder.timePart);
-    const [reminderPeriodInput, setReminderPeriodInput] = useState(reminderPeriod);
+    const [reminderPeriodInput, setReminderPeriodInput] = useState<number | "">(reminderPeriod);
+    const formRef = useRef<HTMLFormElement>(null);
+    const clickedInsideRef = useRef(false);
+
+    useEffect(() => {
+        const onMouseDown = (e: MouseEvent) => {
+            clickedInsideRef.current = !!(formRef.current && formRef.current.contains(e.target as Node));
+        };
+        document.addEventListener('mousedown', onMouseDown);
+        return () => document.removeEventListener('mousedown', onMouseDown);
+    }, []);
     
     const valid = ():boolean => {
         const newErrors: { coopName?: string; capacity?: string; notes?: string; doorOpen?: string; doorClose?: string; reminderDate?: string; reminderTime?: string; reminderPeriod?: string} = {};
@@ -103,6 +113,24 @@ function UpdateCoopForm({coopId, zoneId, coopName, capacity, notes, doorOpen, do
         }
     };
 
+    const handleBlur = (e: React.FocusEvent<HTMLFormElement>) => {
+        if (clickedInsideRef.current) {
+            clickedInsideRef.current = false;
+            return;
+        }
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            setCoopNameInput(coopName);
+            setCapacityInput(capacity);
+            setNotesInput(notes);
+            setDoorOpenInput(doorOpen);
+            setDoorCloseInput(doorClose);
+            setReminderDateInput(parsedReminder.datePart);
+            setReminderTimeInput(parsedReminder.timePart);
+            setReminderPeriodInput(reminderPeriod);
+            setErrors({});
+        }
+    };
+
     const handleDelete = () => {
         if (window.confirm("Are you sure you want to delete this coop? This action cannot be undone.")) {
             try{deleteCoop(coopId);
@@ -116,13 +144,13 @@ function UpdateCoopForm({coopId, zoneId, coopName, capacity, notes, doorOpen, do
     };
 
     return (
-        <form onSubmit={handleSubmit} className="update-coop-form">
+        <form ref={formRef} onSubmit={handleSubmit} onBlur={handleBlur} className="update-coop-form">
             <label htmlFor="coop-name">Coop Name:</label>
             <input type="text" id="coop-name" value={coopNameInput} onChange={(e) => setCoopNameInput(e.target.value)} placeholder="Coop Name" 
             className={errors.coopName ? "errorBorder" : ""}/>
             {errors.coopName && <span className="formError">{errors.coopName}</span>}
             <label htmlFor="capacity">Capacity:</label>
-            <input type="number" id="capacity" value={capacityInput} onChange={(e) => setCapacityInput(Number(e.target.value))} placeholder="Capacity"
+            <input type="number" id="capacity" value={capacityInput} onChange={(e) => setCapacityInput(e.target.value === "" ? "" : Number(e.target.value))} placeholder="Capacity"
             className={errors.capacity ? "errorBorder" : ""}/>
             {errors.capacity && <span className="formError">{errors.capacity}</span>}
             <label htmlFor="notes">Notes:</label>
@@ -141,7 +169,7 @@ function UpdateCoopForm({coopId, zoneId, coopName, capacity, notes, doorOpen, do
             <input type="time" id="reminder-time" value={reminderTimeInput} onChange={(e) => setReminderTimeInput(e.target.value)} className={errors.reminderTime ? "errorBorder" : ""}/>
             {errors.reminderTime && <span className="formError">{errors.reminderTime}</span>}
             <label htmlFor="reminder-period">Reminder Period (days):</label>
-            <input type="number" id="reminder-period" value={reminderPeriodInput} onChange={(e) => setReminderPeriodInput(Number(e.target.value))} placeholder="Reminder Period in days" 
+            <input type="number" id="reminder-period" value={reminderPeriodInput} onChange={(e) => setReminderPeriodInput(e.target.value === "" ? "" : Number(e.target.value))} placeholder="Reminder Period in days" 
             className={errors.reminderPeriod ? "errorBorder" : ""}/>
             {errors.reminderPeriod && <span className="formError">{errors.reminderPeriod}</span>}
 

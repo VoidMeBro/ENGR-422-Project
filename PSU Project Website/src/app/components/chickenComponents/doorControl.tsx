@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 interface doorControlProps {
     doorState: boolean;
     setDoorState: (value: boolean) => void;
@@ -30,11 +30,21 @@ function DoorControl({ doorState, setDoorState, times , setOpenTime, setCloseTim
     const[doorCloseTime, setDoorCloseTime] = useState<string>("");
     const [submitted, setSubmitted] = useState(false);
     const [errors, setErrors] = useState<{ doorOpenTime?: string; doorCloseTime?: string}>({});
+    const formRef = useRef<HTMLFormElement>(null);
+    const clickedInsideRef = useRef(false);
 
     useEffect(() => {
         if (times && times[0]) setDoorOpenTime(times[0]);
         if (times && times[1]) setDoorCloseTime(times[1]);
     }, [times[0], times[1]]);
+
+    useEffect(() => {
+        const onMouseDown = (e: MouseEvent) => {
+            clickedInsideRef.current = !!(formRef.current && formRef.current.contains(e.target as Node));
+        };
+        document.addEventListener('mousedown', onMouseDown);
+        return () => document.removeEventListener('mousedown', onMouseDown);
+    }, []);
 
     const valid = (): { doorOpenTime?: string; doorCloseTime?: string} => {
         const newErrors: { doorOpenTime?: string; doorCloseTime?: string} = {};
@@ -70,7 +80,10 @@ function DoorControl({ doorState, setDoorState, times , setOpenTime, setCloseTim
     }
 
     const handleBlur = (e: React.FocusEvent<HTMLFormElement>) => {
-    if ((e.relatedTarget as HTMLElement)?.id === "change") return;
+        if (clickedInsideRef.current) {
+            clickedInsideRef.current = false;
+            return;
+        }
         if (!e.currentTarget.contains(e.relatedTarget as Node)) {
             setDoorOpenTime(times[0]); 
             setDoorCloseTime(times[1]);
@@ -92,7 +105,7 @@ function DoorControl({ doorState, setDoorState, times , setOpenTime, setCloseTim
                     <button id = "control-door" onClick={()=> setDoorState(!doorState)}>
                         {doorState ? "Close Door" : "Open Door"}
                     </button>
-                    <form id = "door-form" onSubmit={handleSubmit} onBlur={handleBlur} noValidate>
+                    <form id = "door-form" ref={formRef} onSubmit={handleSubmit} onBlur={handleBlur} noValidate>
                         <section className = "set-time">
                             <label htmlFor="open">Door Opens</label>
                             <input type="time" name="open" id="open" onChange={(e)=>setDoorOpenTime(e.target.value)} 

@@ -39,24 +39,27 @@
 }
 .formIcons{
     height: 15px;
-    position: absolute;
-    left: 75%;
-    margin: -1.2% 0 0 0;
+    flex-shrink: 0;
+    margin-left: auto;
 }
 .formTitlesBefore{
     background-color: rgb(217, 217, 217,0.38);
     border-radius: 15px;
     border-left: 4px solid rgba(0, 87, 6, 0.94);
-    padding: 0.5% 0% 0.5% 2%;
+    padding: 0.5% 2% 0.5% 2%;
     margin-top: 1%;
+    display: flex;
+    align-items: center;
 }
 .formTitlesAfter{
     background-color: rgb(217, 217, 217,0.38);
     border-top-right-radius: 25px;
     border-top-left-radius: 25px;
     border-left: 4px solid rgba(0, 87, 6, 0.94);
-    padding: 0.5% 0% 0% 2%;
+    padding: 0.5% 2% 0% 2%;
     margin-top: 1%;
+    display: flex;
+    align-items: center;
 }
 #add-chicken-form, #log-eggs-form{
     background-color: rgb(217, 217, 217,0.38);
