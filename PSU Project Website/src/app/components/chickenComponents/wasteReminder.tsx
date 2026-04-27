@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface WasteReminderProps  {
     date: string;
@@ -43,6 +43,16 @@ function wasteReminder({ date, period, setDate, setPeriod, coopId, coopName }: W
     const [reminderDate, setReminderDate] = useState("");
     const [submitted, setSubmitted] = useState(false);
     const [errors, setErrors] = useState<{ reminderTime?: string; reminderPeriod?: string; reminderDate?: string }>({});
+    const formRef = useRef<HTMLFormElement>(null);
+    const clickedInsideRef = useRef(false);
+
+    useEffect(() => {
+        const onMouseDown = (e: MouseEvent) => {
+            clickedInsideRef.current = !!(formRef.current && formRef.current.contains(e.target as Node));
+        };
+        document.addEventListener('mousedown', onMouseDown);
+        return () => document.removeEventListener('mousedown', onMouseDown);
+    }, []);
 
     const parseDbDate = (value: string) => {
         if (!value) return { date: "", time: "" };
@@ -116,7 +126,10 @@ function wasteReminder({ date, period, setDate, setPeriod, coopId, coopName }: W
     }
 
     const handleBlur = (e: React.FocusEvent<HTMLFormElement>) => {
-    if ((e.relatedTarget as HTMLElement)?.id === "reminder-button") return;
+        if (clickedInsideRef.current) {
+            clickedInsideRef.current = false;
+            return;
+        }
         if (!e.currentTarget.contains(e.relatedTarget as Node)) {
             setReminderDate("");
             setReminderTime("");
@@ -135,7 +148,7 @@ function wasteReminder({ date, period, setDate, setPeriod, coopId, coopName }: W
                     <p id="collection">Clean {coopName} coop every {period} days. Next clean: {collectionDate} {temptime}</p>
                     <hr className="coop-hr"/>
                     
-                    <form id="reminder-form" onSubmit={handleSubmit} onBlur={handleBlur} noValidate>
+                    <form id="reminder-form" ref={formRef} onSubmit={handleSubmit} onBlur={handleBlur} noValidate>
                         <label htmlFor="reminder-time" >Set Reminder Time:</label>
                         <section>
                             <input type="date" name="reminder-date" id="reminder-date"    

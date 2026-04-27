@@ -104,7 +104,7 @@ function Coop(){
     return(
 
         <main className="coop-page main-content">
-            <section>
+            <section className="coop-selection-section">
             <h1 className="coop-title">Chicken Coop Management</h1>
             <div className="coop-selector">
                 <label htmlFor="coop-select">Select Coop:</label>
@@ -137,7 +137,7 @@ function Coop(){
             {!poopLog && <LogWaste coopId={coopId} period={reminderPeriod} reminderDate={reminderDate} setReminderDate={setReminderDate} />}
         </section>
 
-        <section>
+        <section className="coop-form-section update-coop-section">
                 <div onClick={() => setHideUpdateCoop((current) => !current)} style={{userSelect:"none"}}>
                     <h2 style={{cursor:"pointer"}}>Edit Coop Details
                         <img className="formIcons" src={updateCoop ? "/chickenImages/down-arrow.svg" : "/chickenImages/up-arrow.svg"} alt=""/>
@@ -146,7 +146,7 @@ function Coop(){
                 {!updateCoop && <UpdateCoopForm coopId={coopId} zoneId={zoneId} coopName={coopName} capacity={capacity} notes={notes} doorOpen={openTime} doorClose={closeTime} reminderDate={reminderDate} reminderPeriod={reminderPeriod} setSubmitted={setSubmitted}/>}
         </section>
 
-        <section>
+        <section className="coop-form-section add-coop-section">
                 <div onClick={() => setHideAddCoop((current) => !current)} style={{userSelect:"none"}}>
                     <h2 style={{cursor:"pointer"}}>Add New Coop
                         <img className="formIcons" src={addCoop ? "/chickenImages/down-arrow.svg" : "/chickenImages/up-arrow.svg"} alt=""/>

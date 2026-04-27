@@ -33,10 +33,12 @@ function ChickenProfiles({ refreshKey }: { refreshKey: number }){
     const fetchChickens = async () => {
         try{
             const res = await fetch(`/api/chickenSelect`);
+            if (!res.ok) throw new Error("Failed to fetch chickens");
             const data = await res.json();
-            setAllChickens(data);
+            setAllChickens(Array.isArray(data) ? data : []);
         }catch(error){
             console.error("Error fetching chickens:", error);
+            setAllChickens([]);
         }
     };
     fetchChickens();
@@ -131,14 +133,14 @@ function ChickenProfiles({ refreshKey }: { refreshKey: number }){
     };
 
     const toImageSrc = (imageData: string | null): string => {
-        if (!imageData) return "/placeholder-chicken.png";
+        if (!imageData) return "/chickenImages/ChickenFiller.png";
         return imageData;
     };
 
     return(
         <>
         <div className="chicken-grid">
-            {allChickens.map((chicken) => (
+            {Array.isArray(allChickens) && allChickens.map((chicken) => (
                 <div 
                     className="chicken-card" 
                     key={chicken.rfid}

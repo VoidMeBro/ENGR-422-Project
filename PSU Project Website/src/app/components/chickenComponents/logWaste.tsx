@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface LogWasteProps {
     coopId: number;
@@ -47,7 +47,16 @@ function logWaste({ coopId, period, reminderDate, setReminderDate }: LogWastePro
     const [notes, setNotes] = useState("");
     const [submitted, setSubmitted] = useState(false);
     const [errors, setErrors] = useState<{ date?: string; quantity?: string}>({});
+    const formRef = useRef<HTMLFormElement>(null);
+    const clickedInsideRef = useRef(false);
 
+    useEffect(() => {
+        const onMouseDown = (e: MouseEvent) => {
+            clickedInsideRef.current = !!(formRef.current && formRef.current.contains(e.target as Node));
+        };
+        document.addEventListener('mousedown', onMouseDown);
+        return () => document.removeEventListener('mousedown', onMouseDown);
+    }, []);
 
     const valid = (): { date?: string; quantity?: string} => {
         const newErrors: { date?: string; quantity?: string} = {};
@@ -95,7 +104,10 @@ function logWaste({ coopId, period, reminderDate, setReminderDate }: LogWastePro
     }
 
     const handleBlur = (e: React.FocusEvent<HTMLFormElement>) => {
-    if ((e.relatedTarget as HTMLElement)?.id === "log-poop-button") return;
+        if (clickedInsideRef.current) {
+            clickedInsideRef.current = false;
+            return;
+        }
         if (!e.currentTarget.contains(e.relatedTarget as Node)) {
             setDate(new Date().toISOString().split("T")[0]);
             setQuantity(0);
@@ -105,7 +117,7 @@ function logWaste({ coopId, period, reminderDate, setReminderDate }: LogWastePro
     }
 
     return(
-        <form id = "poop-form" onSubmit={handleSubmit} onBlur={handleBlur} noValidate>
+        <form id = "poop-form" ref={formRef} onSubmit={handleSubmit} onBlur={handleBlur} noValidate>
             <hr id="waste-hr"/>
                     <label htmlFor="collect-date">Date Collected:</label>
                     <input type="date" name="collect-date" id="collect-date" value={date} onChange={(e) => setDate(e.target.value)}
@@ -113,7 +125,7 @@ function logWaste({ coopId, period, reminderDate, setReminderDate }: LogWastePro
                     {errors.date && <span className="formError">{errors.date}</span>}
 
                     <label htmlFor="quantity">Quantity Collected (kg):</label>
-                    <input type="number" name="quantity" id="quantity" value={quantity} onChange={(e) => setQuantity(parseFloat(e.target.value) || 0)}
+                    <input type="number" name="quantity" id="quantity" value={quantity} onChange={(e) => setQuantity(e.target.value === "" ? "" : parseFloat(e.target.value))}
                     className={errors.quantity ? "errorBorder" : ""} required/>
                     {errors.quantity && <span className="formError">{errors.quantity}</span>}
 

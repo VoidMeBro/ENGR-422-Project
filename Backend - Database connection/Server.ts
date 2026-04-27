@@ -4,6 +4,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
+import fetch from 'node-fetch';
 dotenv.config();
 
 let UserID = 0; // Placeholder for user ID, can be set upon login and used in other routes as needed
@@ -186,6 +187,16 @@ const roleId = roleMap[role.toLowerCase()] || 0; // Default to 0 if role is not 
 
 /* Chicken queries */
 
+const PI_STREAM = process.env.Chicken_PI_STREAM_URL;
+
+app.get('/api/chickenAiStream', async (req: Request, res: Response) => {
+    if (!PI_STREAM) { res.status(500).json({ error: 'PI_STREAM_URL not configured' }); return; }
+    const upstream = await fetch(PI_STREAM);
+    
+    res.setHeader('Content-Type', 'multipart/x-mixed-replace; boundary=frame');
+    upstream.body!.pipe(res);
+});
+
 function detectMimeType(buffer: Buffer) {
     if (buffer[0] === 0xFF && buffer[1] === 0xD8) return 'image/jpeg';
     if (buffer[0] === 0x89 && buffer[1] === 0x50) return 'image/png';
@@ -194,20 +205,23 @@ function detectMimeType(buffer: Buffer) {
 }
 
 app.get('/api/chickenSelect', (req, res) => {
-    //const query = 'SELECT * FROM chickens';
+    // Old query with UserID filter (requires login):
+    // const query = `SELECT chickens.* FROM users 
+    //                 INNER JOIN farms
+    //                 ON users.farmId = farms.farmId
+    //                 INNER JOIN FarmZones
+    //                 ON farms.farmId = farmZones.farmId
+    //                 INNER JOIN coops
+    //                 ON farmZones.farmZoneId = coops.zoneId
+    //                 INNER JOIN chickens
+    //                 ON coops.coopId = chickens.coopId
+    //                 WHERE userId = ?`;
+    // db.query(query, [UserID], ...);
 
-    const query = `SELECT chickens.*FROM users 
-                    INNER JOIN farms
-                    ON users.farmId = farms.farmId
-                    INNER JOIN FarmZones
-                    ON farms.farmId = farmZones.farmId
-                    INNER JOIN coops
-                    ON farmZones.farmZoneId = coops.zoneId
-                    INNER JOIN chickens
-                    ON coops.coopId = chickens.coopId
-                    WHERE userId = ?`;
+    // New simplified query - returns all chickens
+    const query = 'SELECT * FROM chickens';
 
-    db.query(query, [UserID], (err: Error | null, results: any) => {
+    db.query(query, (err: Error | null, results: any) => {
         if(err) {
             console.log("Query error:", err);
             return res.status(500).json({ error: 'Database query error' });
@@ -460,18 +474,6 @@ app.put('/api/updateCleaningTimes', (req, res) => {
 });
 
 
-app.post('/api/addCoop', (req, res) => {
-    const { name, doorOpen, doorClose, reminderDate, reminderPeriod } = req.body;
-    const query = 'INSERT INTO coops (name, doorOpen, doorClose, reminderDate, reminderPeriod) VALUES (?, ?, ?, ?, ?)';
-    db.query(query, [name, doorOpen, doorClose, reminderDate, reminderPeriod], (err: Error | null, results: any) => {
-        if (err) {
-            console.error('Error adding coop:', err);
-            return res.status(500).json({ error: 'Database insert error' });
-        }
-        res.json({ message: 'Coop added successfully', coopId: results.insertId });
-    });
-});
-
 app.post('/api/addCleaningLog', (req, res) => {
     const { coopId, lastCleaned, NextCleanDue, weightKg, notes } = req.body;
     const query = 'INSERT INTO coopCleaningLogs (coopId, lastCleaned, NextCleanDue, weightKg, notes) VALUES (?, ?, ?, ?, ?)';
@@ -501,6 +503,28 @@ app.post('/api/addCoop', (req, res) => {
 app.put('/api/updateCoop/:coopId', (req, res) => {
     const { coopId } = req.params;
     const { zoneId, coopName, capacity, notes, doorOpen, doorClose, reminderDate, reminderPeriod } = req.body;
+    const query = `UPDATE coops SET zoneId = ?, coopName = ?, capacity = ?, notes = ?, doorOpen = ?, doorClose = ?, 
+                   reminderDate = ?, reminderPeriod = ? WHERE coopId = ?`;
+    db.query(query, [zoneId, coopName, capacity, notes, doorOpen, doorClose, reminderDate, reminderPeriod, coopId], (err: Error | null, results: any) => {
+        if (err) {
+            console.log("Query error:", err);
+            return res.status(500).json({ error: 'Database query error' });
+        }
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ error: 'Coop not found' });
+        }
+        res.json({ message: 'Coop updated successfully' });
+    });
+});
+
+
+app.put('/api/updateCoop', (req, res) => {
+    const { coopId, zoneId, coopName, capacity, notes, doorOpen, doorClose, reminderDate, reminderPeriod } = req.body;
+
+    if (!coopId) {
+        return res.status(400).json({ error: 'coopId is required' });
+    }
+
     const query = `UPDATE coops SET zoneId = ?, coopName = ?, capacity = ?, notes = ?, doorOpen = ?, doorClose = ?, 
                    reminderDate = ?, reminderPeriod = ? WHERE coopId = ?`;
     db.query(query, [zoneId, coopName, capacity, notes, doorOpen, doorClose, reminderDate, reminderPeriod, coopId], (err: Error | null, results: any) => {
