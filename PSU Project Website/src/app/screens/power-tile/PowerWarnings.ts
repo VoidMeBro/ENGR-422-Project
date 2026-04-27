@@ -49,7 +49,9 @@ export function generatePowerWarnings({
 }: PowerWarningInputs): WarningItem[] {
   const warnings: WarningItem[] = [];
 
-  // Power tile warnings
+  // Power tile warnings - KEEPING battery and solar warnings only
+  
+  // Battery warnings
   if (batteryLevel <= 20) {
     warnings.push({
       id: "power-battery-low",
@@ -66,6 +68,7 @@ export function generatePowerWarnings({
     });
   }
 
+  // Solar power warnings
   if (latestSolarPower <= 0) {
     warnings.push({
       id: "power-no-solar",
@@ -73,7 +76,7 @@ export function generatePowerWarnings({
       message: "No solar power is currently being generated.",
       severity: "high",
     });
-  } else if (latestSolarPower < 20) {
+  } else if (latestSolarPower < 0.8) {
     warnings.push({
       id: "power-low-solar",
       source: "Power Tile",
@@ -82,6 +85,7 @@ export function generatePowerWarnings({
     });
   }
 
+  // Power demand warning (comparing solar supply vs demand)
   if (latestPowerOut > latestSolarPower) {
     const difference = latestPowerOut - latestSolarPower;
 
@@ -90,117 +94,6 @@ export function generatePowerWarnings({
       source: "Power Tile",
       message: `Power demand is higher than solar supply by ${difference.toFixed(2)} Wh.`,
       severity: difference > 20 ? "high" : "medium",
-    });
-  }
-
-  zonePowerData.forEach((zone) => {
-    if (zone.percentage >= 50) {
-      warnings.push({
-        id: `zone-high-${zone.zoneName}`,
-        source: zone.zoneName,
-        message: `${zone.zoneName} is using unusually high power (${zone.percentage.toFixed(1)}%).`,
-        severity: "high",
-      });
-    } else if (zone.percentage >= 35) {
-      warnings.push({
-        id: `zone-medium-${zone.zoneName}`,
-        source: zone.zoneName,
-        message: `${zone.zoneName} is using elevated power (${zone.percentage.toFixed(1)}%).`,
-        severity: "medium",
-      });
-    }
-  });
-
-  // Chicken coop warnings
-  if (crossTileAlerts?.chickenCoop?.temperatureSystemOffline) {
-    warnings.push({
-      id: "chicken-temp-offline",
-      source: "Chicken Coop",
-      message: "Temperature control system is offline due to a power issue.",
-      severity: "high",
-    });
-  }
-
-  if (crossTileAlerts?.chickenCoop?.ventilationFailure) {
-    warnings.push({
-      id: "chicken-ventilation-failure",
-      source: "Chicken Coop",
-      message: "Ventilation system failure detected due to power loss.",
-      severity: "high",
-    });
-  }
-
-  if (crossTileAlerts?.chickenCoop?.lightingSystemInactive) {
-    warnings.push({
-      id: "chicken-lighting-inactive",
-      source: "Chicken Coop",
-      message: "Lighting system is inactive due to insufficient power.",
-      severity: "medium",
-    });
-  }
-
-  if (crossTileAlerts?.chickenCoop?.highPowerDemand) {
-    warnings.push({
-      id: "chicken-high-demand",
-      source: "Chicken Coop",
-      message: "Chicken coop is placing high demand on the power system.",
-      severity: "medium",
-    });
-  }
-
-  // Crop farm warnings
-  if (crossTileAlerts?.cropFarm?.irrigationInactive) {
-    warnings.push({
-      id: "crop-irrigation-inactive",
-      source: "Crop Farm",
-      message: "Irrigation system is inactive due to a power shortage.",
-      severity: "high",
-    });
-  }
-
-  if (crossTileAlerts?.cropFarm?.highPowerDemand) {
-    warnings.push({
-      id: "crop-high-demand",
-      source: "Crop Farm",
-      message: "Crop farm irrigation system is drawing high power.",
-      severity: "medium",
-    });
-  }
-
-  if (crossTileAlerts?.cropFarm?.lowPowerAffectingOperations) {
-    warnings.push({
-      id: "crop-low-power-operations",
-      source: "Crop Farm",
-      message: "Low power availability is affecting crop farm operations.",
-      severity: "medium",
-    });
-  }
-
-  // Water distribution warnings
-  if (crossTileAlerts?.waterDistribution?.pumpNotOperating) {
-    warnings.push({
-      id: "water-pump-not-operating",
-      source: "Water Distribution",
-      message: "Water pump is not operating due to a power issue.",
-      severity: "high",
-    });
-  }
-
-  if (crossTileAlerts?.waterDistribution?.lowWaterFlowDueToPower) {
-    warnings.push({
-      id: "water-low-flow-power",
-      source: "Water Distribution",
-      message: "Low water flow detected due to insufficient power.",
-      severity: "medium",
-    });
-  }
-
-  if (crossTileAlerts?.waterDistribution?.highPowerDemand) {
-    warnings.push({
-      id: "water-high-demand",
-      source: "Water Distribution",
-      message: "Water distribution system is drawing high power.",
-      severity: "medium",
     });
   }
 

@@ -1,66 +1,201 @@
-import React from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Zap, TrendingUp, Battery, Sun, Sunrise, Sunset, AlertCircle } from "lucide-react";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { Badge } from "../../components/ui/badge";
 import { useIsMobile } from "../../components/ui/use-mobile";
 import { Progress } from "../../components/ui/progress";
-import {BatteryStatus, useBatteryData} from "./BatteryLevel";
-import {LightLevelPercentage} from "./LightLevel";
-import {useSunData} from "./SunData";
+import { BatteryStatus, useBatteryData } from "./BatteryLevel";
+import { LightLevelPercentage } from "./LightLevel";
+import { useSunData } from "./SunData";
 import { useSolarPower, useZonePower, powerOutFunction } from "./SolarPower";
 import { generatePowerWarnings } from "./PowerWarnings";
-import { useMemo } from "react";
+import mqtt from 'mqtt';
 
 export function PowerGeneration() {
   const isMobile = useIsMobile();
   const { sunrise: sunriseTime, sunset: sunsetTime } = useSunData();
   const { chartData, loading } = useSolarPower();
-  const { powerOutChartData, powerOutLoading} = powerOutFunction();
-  const { batteryLevelData, isBatteryLoading, batteryError} = useBatteryData(1);
+  const { powerOutChartData, powerOutLoading } = powerOutFunction();
+  const { batteryLevelData, isBatteryLoading, batteryError } = useBatteryData(1);
   const { rawData, energyDistributionloading } = useZonePower(10000);
+  
+  // Use database value for battery level (not MQTT)
   const currentBatteryLevel = BatteryStatus();
+  
+  const [mqttWarnings, setMqttWarnings] = useState([]);
+  
+  // Debug: Log when component mounts
+  useEffect(() => {
+    console.log("PowerGeneration component mounted");
+  }, []);
 
-  const latestSolarPower =
-    chartData.length > 0 ? chartData[chartData.length - 1].power : 0;
+  // MQTT Listener - ONLY for warnings, using JSON payloads
+  useEffect(() => {
+    console.log("Setting up MQTT connection...");
+    let client;
+    
+    try {
+      client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
+        reconnectPeriod: 5000, // Auto reconnect every 5 seconds
+      });
+
+      client.on('connect', () => {
+        console.log("✅ Connected to HiveMQ broker");
+        // Subscribe to multiple warning topics
+        client.subscribe('MSMF/warnings/power-tile', (err) => {
+          if (err) {
+            console.error("❌ Subscription error:", err);
+          } else {
+            console.log("📡 Subscribed to MSMF/warnings/power-tile");
+          }
+        });
+      });
+
+      client.on('message', (topic, message) => {
+        console.log(`📨 Message received on topic: ${topic}`);
+        console.log(`Raw message: ${message.toString()}`);
+        
+        try {
+          // Parse JSON payload
+          const payload = JSON.parse(message.toString());
+          console.log("Parsed JSON payload:", payload);
+          
+          // Handle different warning types based on topic or payload
+          let warning = {
+            id: `mqtt-${Date.now()}-${Math.random()}`,
+            source: "MQTT Alert",
+            message: "",
+            severity: "high",
+          };
+          
+          // Extract message from payload (supports different formats)
+          if (payload.message) {
+            warning.message = payload.message;
+          } else if (payload.alert) {
+            warning.message = payload.alert;
+          } else if (payload.warning) {
+            warning.message = payload.warning;
+          } else if (payload.data && payload.data.message) {
+            warning.message = payload.data.message;
+          } else {
+            warning.message = `Warning from ${topic}`;
+          }
+          
+          // Extract severity if provided
+          if (payload.severity) {
+            warning.severity = payload.severity;
+          } else if (payload.level) {
+            warning.severity = payload.level;
+          }
+          
+          // Add source info from topic
+          if (topic.includes('battery')) {
+            warning.source = "Battery Monitor";
+          } else if (topic.includes('solar')) {
+            warning.source = "Solar Controller";
+          } else if (topic.includes('temperature')) {
+            warning.source = "Temperature Sensor";
+          }
+          
+          console.log("Created warning:", warning);
+          
+          // Add warning to state
+          setMqttWarnings(prev => {
+            const newWarnings = [...prev, warning];
+            console.log(`Total MQTT warnings: ${newWarnings.length}`);
+            return newWarnings;
+          });
+          
+          // Auto-remove warning after 30 seconds
+          setTimeout(() => {
+            setMqttWarnings(prev => prev.filter(w => w.id !== warning.id));
+            console.log(`Removed warning: ${warning.id}`);
+          }, 30000);
+          
+        } catch (error) {
+          console.error("❌ Failed to parse JSON payload:", error);
+          console.log("Message was not valid JSON:", message.toString());
+          
+          // If not JSON, treat as plain text message
+          const warning = {
+            id: `mqtt-${Date.now()}-${Math.random()}`,
+            source: "MQTT Alert",
+            message: message.toString(),
+            severity: "high",
+          };
+          
+          setMqttWarnings(prev => [...prev, warning]);
+          
+          setTimeout(() => {
+            setMqttWarnings(prev => prev.filter(w => w.id !== warning.id));
+          }, 30000);
+        }
+      });
+      
+      client.on('error', (err) => {
+        console.error("❌ MQTT Connection error:", err);
+      });
+      
+      client.on('reconnect', () => {
+        console.log("🔄 MQTT reconnecting...");
+      });
+      
+      client.on('offline', () => {
+        console.log("📴 MQTT offline");
+      });
+      
+    } catch (error) {
+      console.error("❌ Failed to create MQTT client:", error);
+    }
+
+    return () => {
+      if (client) {
+        console.log("🔌 Cleaning up MQTT connection");
+        client.end();
+      }
+    };
+  }, []);
+
+  const latestSolarPower = chartData.length > 0 ? chartData[chartData.length - 1].power : 0;
+  const latestPowerOut = powerOutChartData.length > 0 ? powerOutChartData[powerOutChartData.length - 1].power : 0;
   
-  const latestPowerOut =
-    powerOutChartData.length > 0
-      ? powerOutChartData[powerOutChartData.length - 1].power
-      : 0;
-  
-  const warnings = generatePowerWarnings({
-    batteryLevel: currentBatteryLevel,
-    latestSolarPower,
-    latestPowerOut,
-    zonePowerData: rawData,
-  
-    crossTileAlerts: {
-      chickenCoop: {
-        temperatureSystemOffline: true,
-        ventilationFailure: true,
-        lightingSystemInactive: true,
-        highPowerDemand: true,
+  // Generate warnings from database values (you can disable these if not wanted)
+  const databaseWarnings = useMemo(() => {
+    // If you want to disable database warnings completely, uncomment this line:
+    // return [];
+    
+    const warnings = generatePowerWarnings({
+      batteryLevel: currentBatteryLevel, 
+      latestSolarPower,
+      latestPowerOut,
+      zonePowerData: rawData,
+      crossTileAlerts: {
+        chickenCoop: {
+          temperatureSystemOffline: false,
+          ventilationFailure: false,
+        },
       },
-      cropFarm: {
-        irrigationInactive: true,
-        highPowerDemand: true,
-        lowPowerAffectingOperations: true,
-      },
-      waterDistribution: {
-        pumpNotOperating: true,
-        lowWaterFlowDueToPower: true,
-        highPowerDemand: true,
-      },
-    },
-  });
+    });
+    
+    console.log("Database warnings:", warnings);
+    return warnings;
+  }, [currentBatteryLevel, latestSolarPower, latestPowerOut, rawData]);
+
+  // Combine database warnings with MQTT warnings
+  const allWarnings = useMemo(() => {
+    const combined = [...databaseWarnings, ...mqttWarnings];
+    console.log(`Total combined warnings: ${combined.length} (DB: ${databaseWarnings.length}, MQTT: ${mqttWarnings.length})`);
+    return combined;
+  }, [databaseWarnings, mqttWarnings]);
+
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
   
-const energyDistribution = useMemo(() => {
+  const energyDistribution = useMemo(() => {
     return rawData.map((item, index) => ({
       name: item.zoneName,
-      value: item.totalPower, // Raw value for Pie slice sizing
-      displayPercent: item.percentage, // Pre-calculated percentage from hook
+      value: item.totalPower, 
+      displayPercent: item.percentage, 
       color: COLORS[index % COLORS.length]
     }));
   }, [rawData]);
@@ -79,306 +214,313 @@ const energyDistribution = useMemo(() => {
         <Badge variant="outline" className="self-start bg-green-50 text-green-700 border-green-200 text-base sm:text-lg px-4 py-2 sm:self-auto">
           Online
         </Badge>
-
-        
-         
       </div>
   
+      {/* Warning Signs Card - Shows both database and MQTT warnings */}
       <Card>
-  <CardHeader>
-    <CardTitle className="flex items-center gap-2">
-      <AlertCircle className="w-5 h-5 text-red-500" />
-      Warning Signs
-    </CardTitle>
-  </CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-500" />
+            Warning Signs
+            {mqttWarnings.length > 0 && (
+              <Badge variant="destructive" className="ml-2">
+                {mqttWarnings.length} MQTT
+              </Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {allWarnings.length === 0 ? (
+            <p className="text-sm font-medium text-green-600">
+              No active warning signs at the moment.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {allWarnings.map((warning) => (
+                <div
+                  key={warning.id}
+                  className={`rounded-lg border p-3 ${
+                    warning.severity === "high"
+                      ? "border-red-300 bg-red-50"
+                      : warning.severity === "medium"
+                      ? "border-yellow-300 bg-yellow-50"
+                      : "border-blue-300 bg-blue-50"
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <p className="font-semibold">{warning.source}</p>
+                    {warning.id.startsWith('mqtt') && (
+                      <Badge variant="outline" className="text-xs">MQTT</Badge>
+                    )}
+                  </div>
+                  <p className="text-sm">{warning.message}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-  <CardContent>
-    {warnings.length === 0 ? (
-      <p className="text-sm font-medium text-green-600">
-        No active warning signs at the moment.
-      </p>
-    ) : (
-      <div className="space-y-3">
-        {warnings.map((warning) => (
-          <div
-            key={warning.id}
-            className={`rounded-lg border p-3 ${
-              warning.severity === "high"
-                ? "border-red-300 bg-red-50"
-                : warning.severity === "medium"
-                ? "border-yellow-300 bg-yellow-50"
-                : "border-blue-300 bg-blue-50"
-            }`}
-          >
-            <p className="font-semibold">{warning.source}</p>
-            <p className="text-sm">{warning.message}</p>
-          </div>
-        ))}
-      </div>
-    )}
-  </CardContent>
-</Card>
-
-{/* Light Level & Sun Times Row */}
+      {/* Rest of your component remains the same */}
       {/* Light Level & Sun Times Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Light Level */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2">
-                <Sun className="w-5 h-5 text-yellow-500" />
-                Light Level
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-3xl font-bold text-slate-900">{LightLevelPercentage()}%</span>
-                <span className="text-sm text-slate-600">Current intensity</span>
-              </div>
-              <Progress value={LightLevelPercentage()} className="h-3" />
-            </CardContent>
-          </Card>
-
-          {/* Sunrise & Sunset Times */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle>Sun Times - Bela Bela, Gauteng</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-orange-100 rounded-lg">
-                    <Sunrise className="w-6 h-6 text-orange-600" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-600">Sunrise</p>
-                    <p className="text-2xl font-bold text-slate-900">{sunriseTime}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-indigo-100 rounded-lg">
-                    <Sunset className="w-6 h-6 text-indigo-600" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-600">Sunset</p>
-                    <p className="text-2xl font-bold text-slate-900">{sunsetTime}</p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-        {/* Battery Status */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Light Level */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
-              <Battery className="w-5 h-5 text-green-500" />
-              Battery Status
+              <Sun className="w-5 h-5 text-yellow-500" />
+              Light Level
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-3xl font-bold text-slate-900">{currentBatteryLevel}%</span>
-              <span className="text-sm text-slate-600">Charge level</span>
+              <span className="text-3xl font-bold text-slate-900">{LightLevelPercentage()}%</span>
+              <span className="text-sm text-slate-600">Current intensity</span>
             </div>
-            <Progress value={currentBatteryLevel} className="h-3" />
+            <Progress value={LightLevelPercentage()} className="h-3" />
           </CardContent>
         </Card>
-        {/* Power Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Power In Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Power In (Wh) - Hourly</CardTitle>
-              <CardDescription>{loading? "Fetching live readings..." : "Live solar generation from database"}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis
-                    dataKey="time"
-                    stroke="#64748b"
-                    fontSize={12}
-                    interval={isMobile ? 5 : 2}
-                  />
-                  <YAxis
-                    stroke="#64748b"
-                    fontSize={12}
-                    label={{ value: 'Wh', angle: -90, position: 'insideLeft' }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#fff',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px'
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="power"
-                    stroke="#fbbf24"
-                    strokeWidth={2}
-                    name="Power In"
-                    dot={false}
-                    animationDuration={1500}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
 
-          {/* Power Out Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Power Out (Wh) - Hourly</CardTitle>
-              <CardDescription>{powerOutLoading? "Fetching live readings..." : "Power consumption throughout the day"}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={powerOutChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis
-                    dataKey="time"
-                    stroke="#64748b"
-                    fontSize={12}
-                    interval={isMobile ? 5 : 2}
-                  />
-                  <YAxis
-                    stroke="#64748b"
-                    fontSize={12}
-                    label={{ value: 'Wh', angle: -90, position: 'insideLeft' }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#fff',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px'
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="power"
-                    stroke="#ef4444"
-                    strokeWidth={2}
-                    name="Power Out"
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+        {/* Sunrise & Sunset Times */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Sun Times - Bela Bela, Gauteng</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-100 rounded-lg">
+                  <Sunrise className="w-6 h-6 text-orange-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-600">Sunrise</p>
+                  <p className="text-2xl font-bold text-slate-900">{sunriseTime}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-100 rounded-lg">
+                  <Sunset className="w-6 h-6 text-indigo-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-600">Sunset</p>
+                  <p className="text-2xl font-bold text-slate-900">{sunsetTime}</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-          {/* Battery Level Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Battery Level (%) - 10 Min Intervals</CardTitle>
-              <CardDescription>Battery charge level over time</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={batteryLevelData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis
-                    dataKey="time"
-                    stroke="#64748b"
-                    fontSize={12}
-                    interval={isMobile ? 11 : 5}
-                  />
-                  <YAxis
-                    stroke="#64748b"
-                    fontSize={12}
-                    domain={[0, 100]}
-                    label={{ value: '%', angle: -90, position: 'insideLeft' }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#fff',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px'
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="level"
-                    stroke="#10b981"
-                    strokeWidth={2}
-                    name="Battery Level"
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+      {/* Battery Status - Using DATABASE value */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2">
+            <Battery className="w-5 h-5 text-green-500" />
+            Battery Status
+          </CardTitle>
+          <CardDescription>Data sourced from database</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-3xl font-bold text-slate-900">{currentBatteryLevel}%</span>
+            <span className="text-sm text-slate-600">Charge level</span>
+          </div>
+          <Progress value={currentBatteryLevel} className="h-3" />
+        </CardContent>
+      </Card>
 
-          {/* Energy Distribution Pie Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Energy Distribution</CardTitle>
-              <CardDescription>Power consumption by farm operation</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={energyDistribution}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
+      {/* Power Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Power In Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Power In (Wh) - Hourly</CardTitle>
+            <CardDescription>{loading ? "Fetching live readings..." : "Live solar generation from database"}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis
+                  dataKey="time"
+                  stroke="#64748b"
+                  fontSize={12}
+                  interval={isMobile ? 5 : 2}
+                />
+                <YAxis
+                  stroke="#64748b"
+                  fontSize={12}
+                  label={{ value: 'Wh', angle: -90, position: 'insideLeft' }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#fff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px'
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="power"
+                  stroke="#fbbf24"
+                  strokeWidth={2}
+                  name="Power In"
+                  dot={false}
+                  animationDuration={1500}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Power Out Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Power Out (Wh) - Hourly</CardTitle>
+            <CardDescription>{powerOutLoading ? "Fetching live readings..." : "Power consumption throughout the day"}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={powerOutChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis
+                  dataKey="time"
+                  stroke="#64748b"
+                  fontSize={12}
+                  interval={isMobile ? 5 : 2}
+                />
+                <YAxis
+                  stroke="#64748b"
+                  fontSize={12}
+                  label={{ value: 'Wh', angle: -90, position: 'insideLeft' }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#fff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px'
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="power"
+                  stroke="#ef4444"
+                  strokeWidth={2}
+                  name="Power Out"
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Battery Level Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Battery Level (%) - 10 Min Intervals</CardTitle>
+            <CardDescription>Battery charge level over time from database</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={batteryLevelData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis
+                  dataKey="time"
+                  stroke="#64748b"
+                  fontSize={12}
+                  interval={isMobile ? 11 : 5}
+                />
+                <YAxis
+                  stroke="#64748b"
+                  fontSize={12}
+                  domain={[0, 100]}
+                  label={{ value: '%', angle: -90, position: 'insideLeft' }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#fff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px'
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="level"
+                  stroke="#10b981"
+                  strokeWidth={2}
+                  name="Battery Level"
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Energy Distribution Pie Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Energy Distribution</CardTitle>
+            <CardDescription>Power consumption by farm operation</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={energyDistribution}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
                   label={isMobile ? false : (props) => {
                     return `${props.name}: ${Number(props.payload.displayPercent).toFixed(1)}%`;
-                    }}
-                    outerRadius={isMobile ? 70 : 100}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {energyDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  {/* 2. Tooltip: Shows Name, raw kW, and % when you hover */}
-                  <Tooltip 
-                    formatter={(value: number, name: string, props: any) => [`${value} kW (${Number(props.payload.displayPercent).toFixed(1)}%)`, name]}
-                    contentStyle={{
-                      backgroundColor: '#fff',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px'}}
-                    />
-                </PieChart>
-              </ResponsiveContainer>
-<div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-  {/* Add a loading check for the distribution specifically */}
-  {energyDistributionloading ? (
-    <p className="text-sm text-slate-500">Loading zones...</p>
-  ) : (
-    energyDistribution.map((entry) => (
-      <div key={entry.name} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.color }}></span>
-          <span className="truncate text-slate-700">{entry.name}</span>
-        </div>
-        {/* Use the fixed percentage from the hook */}
-        <span className="font-medium text-slate-900">
-          {Number(entry.displayPercent).toFixed(1)}%
-        </span>
-      </div>
-    ))
-  )}
-</div>
-            </CardContent>
-          </Card>
-        </div>
-        {/* Footer - Data Source Note */}
-        <Card className="bg-slate-50">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span>Live data via LoRa network • Last update: {new Date().toLocaleTimeString()} • Group 2 Module</span>
+                  }}
+                  outerRadius={isMobile ? 70 : 100}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {energyDistribution.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip 
+                  formatter={(value: number, name: string, props: any) => [`${value} kW (${Number(props.payload.displayPercent).toFixed(1)}%)`, name]}
+                  contentStyle={{
+                    backgroundColor: '#fff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px'
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {energyDistributionloading ? (
+                <p className="text-sm text-slate-500">Loading zones...</p>
+              ) : (
+                energyDistribution.map((entry) => (
+                  <div key={entry.name} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.color }}></span>
+                      <span className="truncate text-slate-700">{entry.name}</span>
+                    </div>
+                    <span className="font-medium text-slate-900">
+                      {Number(entry.displayPercent).toFixed(1)}%
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Footer - Data Source Note */}
+      <Card className="bg-slate-50">
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-2 text-sm text-slate-600">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            <span>Live data via LoRa network • Last update: {new Date().toLocaleTimeString()} • Group 2 Module</span>
+          </div>
+        </CardContent>
+      </Card>
     </div>
-
-
   );
 }
