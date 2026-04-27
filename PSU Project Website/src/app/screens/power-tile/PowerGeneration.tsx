@@ -1,3 +1,4 @@
+import React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Zap, TrendingUp, Battery, Sun, Sunrise, Sunset, AlertCircle } from "lucide-react";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
@@ -8,6 +9,7 @@ import {BatteryStatus, useBatteryData} from "./BatteryLevel";
 import {LightLevelPercentage} from "./LightLevel";
 import {useSunData} from "./SunData";
 import { useSolarPower, useZonePower, powerOutFunction } from "./SolarPower";
+import { generatePowerWarnings } from "./PowerWarnings";
 import { useMemo } from "react";
 
 export function PowerGeneration() {
@@ -17,6 +19,41 @@ export function PowerGeneration() {
   const { powerOutChartData, powerOutLoading} = powerOutFunction();
   const { batteryLevelData, isBatteryLoading, batteryError} = useBatteryData(1);
   const { rawData, energyDistributionloading } = useZonePower(10000);
+  const currentBatteryLevel = BatteryStatus();
+
+  const latestSolarPower =
+    chartData.length > 0 ? chartData[chartData.length - 1].power : 0;
+  
+  const latestPowerOut =
+    powerOutChartData.length > 0
+      ? powerOutChartData[powerOutChartData.length - 1].power
+      : 0;
+  
+  const warnings = generatePowerWarnings({
+    batteryLevel: currentBatteryLevel,
+    latestSolarPower,
+    latestPowerOut,
+    zonePowerData: rawData,
+  
+    crossTileAlerts: {
+      chickenCoop: {
+        temperatureSystemOffline: true,
+        ventilationFailure: true,
+        lightingSystemInactive: true,
+        highPowerDemand: true,
+      },
+      cropFarm: {
+        irrigationInactive: true,
+        highPowerDemand: true,
+        lowPowerAffectingOperations: true,
+      },
+      waterDistribution: {
+        pumpNotOperating: true,
+        lowWaterFlowDueToPower: true,
+        highPowerDemand: true,
+      },
+    },
+  });
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
   
 const energyDistribution = useMemo(() => {
@@ -46,6 +83,43 @@ const energyDistribution = useMemo(() => {
         
          
       </div>
+  
+      <Card>
+  <CardHeader>
+    <CardTitle className="flex items-center gap-2">
+      <AlertCircle className="w-5 h-5 text-red-500" />
+      Warning Signs
+    </CardTitle>
+  </CardHeader>
+
+  <CardContent>
+    {warnings.length === 0 ? (
+      <p className="text-sm font-medium text-green-600">
+        No active warning signs at the moment.
+      </p>
+    ) : (
+      <div className="space-y-3">
+        {warnings.map((warning) => (
+          <div
+            key={warning.id}
+            className={`rounded-lg border p-3 ${
+              warning.severity === "high"
+                ? "border-red-300 bg-red-50"
+                : warning.severity === "medium"
+                ? "border-yellow-300 bg-yellow-50"
+                : "border-blue-300 bg-blue-50"
+            }`}
+          >
+            <p className="font-semibold">{warning.source}</p>
+            <p className="text-sm">{warning.message}</p>
+          </div>
+        ))}
+      </div>
+    )}
+  </CardContent>
+</Card>
+
+{/* Light Level & Sun Times Row */}
       {/* Light Level & Sun Times Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Light Level */}
@@ -104,10 +178,10 @@ const energyDistribution = useMemo(() => {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-3xl font-bold text-slate-900">{BatteryStatus()}%</span>
+              <span className="text-3xl font-bold text-slate-900">{currentBatteryLevel}%</span>
               <span className="text-sm text-slate-600">Charge level</span>
             </div>
-            <Progress value={BatteryStatus()} className="h-3" />
+            <Progress value={currentBatteryLevel} className="h-3" />
           </CardContent>
         </Card>
         {/* Power Charts */}
