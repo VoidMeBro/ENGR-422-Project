@@ -1,3 +1,4 @@
+
 import express from 'express';
 import mysql from 'mysql2';
 import cors from 'cors';
@@ -16,7 +17,7 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-const db = mysql.createConnection({
+/* const db = mysql.createConnection({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
@@ -32,9 +33,27 @@ const db = mysql.createConnection({
   } else {
     console.log('Connected to MySQL database');
   }
+}); */
+
+const db = mysql.createPool({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
 });
 
-
+// Test the pool on startup
+db.getConnection((err, connection) => {
+    if (err) {
+        console.error('Database connection failed:', err.message);
+    } else {
+        console.log('Connected to MySQL database');
+        connection.release(); // return it to the pool
+    }
+});
 
 //----- login route/API, checks if the username exists and if the password matches------//
 app.post('/api/login', async (req: Request, res: Response) => {
@@ -187,22 +206,37 @@ const roleId = roleMap[role.toLowerCase()] || 0; // Default to 0 if role is not 
 
 /* Chicken queries */
 
-const PI_STREAM = process.env.Chicken_PI_STREAM_URL;
+const PI_STREAM = process.env.CHICKEN_PI_STREAM_URL;
 
 app.get('/api/chickenAiStream', async (req: Request, res: Response) => {
-    if (!PI_STREAM) { res.status(500).json({ error: 'PI_STREAM_URL not configured' }); return; }
-    const upstream = await fetch(PI_STREAM);
-    
-    res.setHeader('Content-Type', 'multipart/x-mixed-replace; boundary=frame');
-    upstream.body!.pipe(res);
-});
+    if (!PI_STREAM) { 
+        res.status(500).json({ error: 'CHICKEN_PI_STREAM_URL not configured' }); 
+        return; 
+    }
 
-function detectMimeType(buffer: Buffer) {
-    if (buffer[0] === 0xFF && buffer[1] === 0xD8) return 'image/jpeg';
-    if (buffer[0] === 0x89 && buffer[1] === 0x50) return 'image/png';
-    if (buffer[0] === 0x52 && buffer[1] === 0x49) return 'image/webp';
-    return 'image/jpeg';
-}
+    try {
+        const upstream = await fetch(PI_STREAM, {
+            headers: { Connection: 'keep-alive' },
+        });
+        
+        if (!upstream.ok || !upstream.body) {
+            res.status(502).json({ error: 'Failed to connect to stream' });
+            return;
+        }
+
+        const contentType = upstream.headers.get('content-type');
+        res.setHeader('Content-Type', contentType || 'multipart/x-mixed-replace; boundary=frame');
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('Transfer-Encoding', 'chunked');
+
+        upstream.body.pipe(res);
+
+    } catch (err) {
+        console.error('Stream error:', err);
+        res.status(502).json({ error: 'Stream connection failed' });
+    }
+});
 
 app.get('/api/chickenSelect', (req, res) => {
     // Old query with UserID filter (requires login):
@@ -219,6 +253,13 @@ app.get('/api/chickenSelect', (req, res) => {
     // db.query(query, [UserID], ...);
 
     // New simplified query - returns all chickens
+
+    function detectMimeType(buffer: Buffer) {
+    if (buffer[0] === 0xFF && buffer[1] === 0xD8) return 'image/jpeg';
+    if (buffer[0] === 0x89 && buffer[1] === 0x50) return 'image/png';
+    if (buffer[0] === 0x52 && buffer[1] === 0x49) return 'image/webp';
+    return 'image/jpeg';
+}
     const query = 'SELECT * FROM chickens';
 
     db.query(query, (err: Error | null, results: any) => {
@@ -553,6 +594,45 @@ app.delete('/api/deleteCoop/:coopId', (req, res) => {
         res.json({ message: 'Coop deleted successfully' });
     });
 });
+
+/* import { sendPredatorAlertEmail } from './emailUtil';
+import nodemailer from 'nodemailer';
+// Log predator detection and notify all users
+app.post('/api/logPredator', async (req: Request, res: Response) => {
+    const { coopId, deviceId, timeOfDetection, confidenceScore, predatorType, images } = req.body;
+    try {
+        // Insert into predatorlog table
+        await new Promise((resolve, reject) => {
+            db.query(
+                'INSERT INTO predatorlog (coopId, deviceId, timeOfDetection, confidenceScore, predatorType, images) VALUES (?, ?, ?, ?, ?, ?)',
+                [coopId, deviceId, timeOfDetection, confidenceScore, predatorType, images],
+                (err: Error | null) => {
+                    if (err) reject(err);
+                    else resolve(true);
+                }
+            );
+        });
+
+        
+        db.query('SELECT email FROM users WHERE email IS NOT NULL AND email != ""', async (err: Error | null, results: any[]) => {
+            if (err) {
+                console.error('Error fetching user emails:', err);
+                return res.status(500).json({ error: 'Failed to fetch user emails' });
+            }
+            const emails = results.map(r => r.email);
+            try {
+                await sendPredatorAlertEmail(emails, predatorType, confidenceScore, timeOfDetection);
+                res.json({ success: true, message: 'Predator logged and emails sent' });
+            } catch (emailErr) {
+                console.error('Error sending emails:', emailErr);
+                res.status(500).json({ error: 'Predator logged, but failed to send emails' });
+            }
+        });
+    } catch (dbErr) {
+        console.error('Error logging predator:', dbErr);
+        res.status(500).json({ error: 'Failed to log predator' });
+    }
+}); */
 
 //--------------------------Power team----------------------------------
 

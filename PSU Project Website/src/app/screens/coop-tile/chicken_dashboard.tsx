@@ -88,12 +88,15 @@ function Chicken_dashboard() {
             </section>
 
             <section id="Chicken-Video-Container">
-                <button id="Chicken-Video-Button" onClick={() => setVideoOn(!videoOn)}>
-                    {videoOn ? "Hide Video" : "Show Video"}
-                </button>
-                {videoOn && (
-                    <img id="Chicken-Video" src="/api/chickenAiStream" alt="Stream Down" />
-                )}
+                <button id="Chicken-Video-Button" onClick={() => {
+                        console.log("Button clicked, videoOn:", !videoOn);
+                        setVideoOn(!videoOn);
+                    }}>
+                        {videoOn ? "Hide Video" : "Show Video"}
+                    </button>
+                    {videoOn && (
+                        <img id="Chicken-Video" src="/api/chickenAiStream" alt="Stream Down" />
+                    )}
             </section>
 
             <section id="chart-container" style={{ marginBottom: "40px" }}>
