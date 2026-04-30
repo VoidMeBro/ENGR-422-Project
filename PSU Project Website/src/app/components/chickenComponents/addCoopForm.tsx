@@ -68,7 +68,7 @@ function AddCoopForm(){
             newErrors.closeTime = "Door close time must be after door open time.";
         if (reminderTime === "") newErrors.reminderTime = "Please enter a reminder time.";
         else if (new Date(`${reminderDate}T${reminderTime}`) < new Date()) newErrors.reminderTime = "Reminder time cannot be in the past.";
-        if (reminderPeriod <= 0)
+        if (parseInt(reminderPeriod.toString()) <= 0)
             newErrors.reminderPeriod = "Reminder period must be greater than 0.";
         if (reminderDate === "") newErrors.reminderDate = "Please enter a reminder date.";
             else if (new Date(reminderDate) < new Date()) newErrors.reminderDate = "Reminder date cannot be in the past.";

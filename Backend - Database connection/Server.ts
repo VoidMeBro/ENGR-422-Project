@@ -595,7 +595,7 @@ app.delete('/api/deleteCoop/:coopId', (req, res) => {
     });
 });
 
-/* import { sendPredatorAlertEmail } from './emailUtil';
+import { sendPredatorAlertEmail } from './emailUtil';
 import nodemailer from 'nodemailer';
 // Log predator detection and notify all users
 app.post('/api/logPredator', async (req: Request, res: Response) => {
@@ -632,7 +632,7 @@ app.post('/api/logPredator', async (req: Request, res: Response) => {
         console.error('Error logging predator:', dbErr);
         res.status(500).json({ error: 'Failed to log predator' });
     }
-}); */
+});
 
 //--------------------------Power team----------------------------------
 

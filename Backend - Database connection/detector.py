@@ -3,7 +3,8 @@ import numpy as np
 from datetime import datetime
 from ultralytics import YOLO
 import time
-from database_connect import insert_predator
+import requests
+import base64
 
 # ===========================================================
 # SECTION 1 — Setting up the model
@@ -120,9 +121,28 @@ def process_detections(frame: np.ndarray, results) -> bool:
             # Update the cooldown tracker
             last_detection_times[class_name] = now
 
-            #Call the database function to insert the new predator detection into the database
-            insert_predator(detection_time, confidence_score, predator_type, screenshot_blob)
+            # --- API call to Express backend ---
+            
 
+            try:
+                image_b64 = base64.b64encode(screenshot_blob).decode("utf-8") if screenshot_blob else None
+
+                payload = {
+                    "coopId": 1,
+                    "deviceId": 1,
+                    "timeOfDetection": detection_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "confidenceScore": confidence_score,
+                    "predatorType": predator_type,
+                    "images": image_b64
+                }
+
+                res = requests.post("/api/logPredator", json=payload, timeout=5)
+
+                if not res.ok:
+                    print(f"Failed to log predator detection: {res.status_code} {res.text}")
+            except requests.RequestException as e:
+                print(f"Error logging predator detection: {e}")
+     
             # Print to VS Code terminal so you can see what's happening
             print("\n" + "!" * 50)
             print("  PREDATOR DETECTED")
