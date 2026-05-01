@@ -22,22 +22,17 @@ function updateDoorTimes(coopId: number, openTime: string, closeTime: string) {
         }
     });
 }
-
-
 function DoorControl({ doorState, setDoorState, times , setOpenTime, setCloseTime, coopId   }: doorControlProps) {
-
     const[doorOpenTime, setDoorOpenTime] = useState<string>("");
     const[doorCloseTime, setDoorCloseTime] = useState<string>("");
     const [submitted, setSubmitted] = useState(false);
     const [errors, setErrors] = useState<{ doorOpenTime?: string; doorCloseTime?: string}>({});
     const formRef = useRef<HTMLFormElement>(null);
     const clickedInsideRef = useRef(false);
-
     useEffect(() => {
         if (times && times[0]) setDoorOpenTime(times[0]);
         if (times && times[1]) setDoorCloseTime(times[1]);
     }, [times[0], times[1]]);
-
     useEffect(() => {
         const onMouseDown = (e: MouseEvent) => {
             clickedInsideRef.current = !!(formRef.current && formRef.current.contains(e.target as Node));
@@ -45,7 +40,6 @@ function DoorControl({ doorState, setDoorState, times , setOpenTime, setCloseTim
         document.addEventListener('mousedown', onMouseDown);
         return () => document.removeEventListener('mousedown', onMouseDown);
     }, []);
-
     const valid = (): { doorOpenTime?: string; doorCloseTime?: string} => {
         const newErrors: { doorOpenTime?: string; doorCloseTime?: string} = {};
         if (doorOpenTime === "") newErrors.doorOpenTime = "Please enter a door open time.";
@@ -54,12 +48,10 @@ function DoorControl({ doorState, setDoorState, times , setOpenTime, setCloseTim
             newErrors.doorCloseTime = "Door close time must be after door open time.";
         return newErrors;
     }
-
     useEffect(() => {
         if (!submitted) return;
         setErrors(valid());
     }, [doorOpenTime, doorCloseTime]);
-
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         setSubmitted(true);
@@ -69,7 +61,6 @@ function DoorControl({ doorState, setDoorState, times , setOpenTime, setCloseTim
                 setErrors(validationErrors);
             }
         else{
-            
         updateDoorTimes(coopId, doorOpenTime, doorCloseTime);
 
             setOpenTime(doorOpenTime); 
@@ -78,7 +69,6 @@ function DoorControl({ doorState, setDoorState, times , setOpenTime, setCloseTim
             setSubmitted(false);
         }
     }
-
     const handleBlur = (e: React.FocusEvent<HTMLFormElement>) => {
         if (clickedInsideRef.current) {
             clickedInsideRef.current = false;
@@ -122,11 +112,8 @@ function DoorControl({ doorState, setDoorState, times , setOpenTime, setCloseTim
                             <button id = "change" type="submit" 
                                 >Change Time</button> 
                         </section>
-                        
                     </form>
-                    
-                </section>
+        </section>
     )
 }
-
 export default DoorControl;

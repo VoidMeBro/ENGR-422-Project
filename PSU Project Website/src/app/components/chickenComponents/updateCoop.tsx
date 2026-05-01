@@ -82,7 +82,7 @@ function UpdateCoopForm({coopId, zoneId, coopName, capacity, notes, doorOpen, do
     const valid = ():boolean => {
         const newErrors: { coopName?: string; capacity?: string; notes?: string; doorOpen?: string; doorClose?: string; reminderDate?: string; reminderTime?: string; reminderPeriod?: string} = {};
         if (coopNameInput.length < 1) newErrors.coopName = "Please enter a coop name.";
-        if (capacityInput <= 0 || typeof capacityInput === "string") newErrors.capacity = "Please enter a valid capacity.";
+        if (parseInt(capacityInput.toString()) <= 0 || typeof capacityInput === "string") newErrors.capacity = "Please enter a valid capacity.";
         if (doorOpenInput === "") newErrors.doorOpen = "Please enter a door open time.";
         if (doorCloseInput === "") newErrors.doorClose = "Please enter a door close time.";
         else if (doorOpenInput !== "" && new Date(`1970-01-01T${doorOpenInput}`) >= new Date(`1970-01-01T${doorCloseInput}`)) 
@@ -97,7 +97,7 @@ function UpdateCoopForm({coopId, zoneId, coopName, capacity, notes, doorOpen, do
                 newErrors.reminderTime = "Reminder time cannot be in the past.";
             }
         }
-        if (reminderPeriodInput <= 0 || typeof reminderPeriodInput === "string") newErrors.reminderPeriod = "Reminder period must be a positive number.";
+        if (parseInt(reminderPeriodInput.toString()) <= 0 || typeof reminderPeriodInput === "string") newErrors.reminderPeriod = "Reminder period must be a positive number.";
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     }  
