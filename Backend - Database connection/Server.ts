@@ -680,6 +680,28 @@ app.get('/api/zone-power-usage', (req: Request, res: Response) => {
     });
 });
 
+// -------------------- WATER SENSOR --------------------
+
+app.get('/api/water-sensor-readings', (req, res) => {
+    const limit = req.query.limit || 10;
+    const order = req.query.order === 'asc' ? 'ASC' : 'DESC';
+
+    const query = `
+        SELECT *
+        FROM watersensorreadings
+        ORDER BY takenAt ${order}
+        LIMIT ?
+    `;
+
+    db.query(query, [Number(limit)], (err, results) => {
+        if (err) {
+            console.error("Query error:", err);
+            return res.status(500).json({ error: 'Database query error' });
+        }
+        res.json(results);
+    });
+});
+
 app.listen(5000, () => console.log('Server running on port 5000'));
 
 
