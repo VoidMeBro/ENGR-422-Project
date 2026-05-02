@@ -570,7 +570,7 @@ app.get('/api/batteryLevel', (req, res) => {
 });
 
 app.get('/api/lightLevel', (req, res) => {
-    const query = 'SELECT lightLevel FROM solarReadings';
+    const query = 'SELECT lightLevel FROM solarReadings ORDER BY solarReadingId DESC LIMIT 1';
 
     db.query(query, (err: Error | null, results: any) => {
         if(err) {
@@ -590,7 +590,7 @@ app.get('/api/solar-hourly', (req: Request, res: Response) => {
         SELECT 
             DATE_FORMAT(takenAt, '%Y-%m-%d %H:00:00') AS hour_bucket, 
             AVG(powerGeneratedKw) AS avg_power
-        FROM solarreadings 
+        FROM solarReadings 
         GROUP BY hour_bucket
         ORDER BY hour_bucket DESC 
         LIMIT 24;

@@ -7,7 +7,7 @@ export function BatteryStatus() {
     useEffect(() => {
         const fetchBatteryLevel = async () => {
             try {
-                const res = await fetch(`http://localhost:5000/api/batteryLevel`);
+                const res = await fetch(`api/batteryLevel`);
                 const data = await res.json();
                 if (data && data.length > 0) {
                     setBatteryLevel(data[0].batteryLevelPercent);
@@ -43,7 +43,7 @@ export const useBatteryData = (batteryId: string | number) => {
             try {
                 // No need to set loading to true every time, 
                 // so the graph doesn't flicker/disappear on every refresh
-                const response = await fetch(`http://localhost:5000/api/batteryLevel-everyTenMinutes?id=${batteryId}`);
+                const response = await fetch(`api/batteryLevel-everyTenMinutes?id=${batteryId}`);
                 
                 if (!response.ok) {
                     throw new Error(`Server Error: ${response.status}`);

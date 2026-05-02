@@ -7,7 +7,7 @@ export function LightLevelPercentage()
         useEffect(() => {
         const fetchLightLevel = async () => {
             try {
-                const res = await fetch(`http://localhost:5000/api/lightLevel`);
+                const res = await fetch(`api/lightLevel`);
                 const data = await res.json();
                 setLightLevel(data[0].lightLevel);
             } catch (error) {
