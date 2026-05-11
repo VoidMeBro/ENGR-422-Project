@@ -704,4 +704,586 @@ app.get('/api/water-sensor-readings', (req, res) => {
 
 app.listen(5000, () => console.log('Server running on port 5000'));
 
+// ===================== CROP API START =====================
 
+// ===================== CROP API =====================
+// All routes corrected to match the actual DB schema.
+//
+// Key schema facts:
+//   crops             → cropId, commonName, scientificName, variety, growthDurationDays
+//   cropPlantings     → cropPlantingId, fieldId, cropId, cropStatus, plantedDate, expectedHarvestDate
+//   cropSensorReadings→ cropSensorReadingId, plantingId, deviceId, sensorType, value1, value2, value3, takenAt
+//   harvestRecords    → harvestRecordId, plantingId, harvestedAt, yieldKg, qualityGrade
+//   cropImages        → cropImageId, plantingId, deviceId, imageData, takenAt
+//   cropAiPredictions → cropAiPredictionId, imageId, diseaseName, confidenceScore, status, createdAt
+//   fields            → fieldId, zoneId, fieldName, areaM2, soilType
+//   farmZones         → farmZoneId, zoneName
+
+
+// ---------- GET: All Crops ----------
+app.get('/api/crops', (req: Request, res: Response) => {
+    db.query('SELECT * FROM crops ORDER BY commonName ASC', (err: any, results: any) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
+
+
+// ---------- GET: All Fields (with zone name) ----------
+app.get('/api/crops/fields', (req: Request, res: Response) => {
+    const query = `
+        SELECT
+            f.fieldId,
+            f.fieldName,
+            f.areaM2,
+            f.soilType,
+            f.notes,
+            fz.zoneName
+        FROM fields f
+        LEFT JOIN farmZones fz ON fz.farmZoneId = f.zoneId
+        ORDER BY f.fieldName ASC
+    `;
+    db.query(query, (err: any, results: any) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
+
+
+// ---------- GET: Active Plantings ----------
+// cropPlantings uses cropStatus (ENUM) and plantedDate — not 'status'/'plantingDate'
+app.get('/api/crops/plantings', (req: Request, res: Response) => {
+    const query = `
+        SELECT
+            cp.cropPlantingId,
+            cp.cropStatus,
+            cp.plantedDate,
+            cp.expectedHarvestDate,
+            cp.actualHarvestDate,
+            cp.notes,
+            c.commonName        AS cropName,
+            c.variety,
+            c.growthDurationDays,
+            f.fieldName,
+            fz.zoneName,
+            GREATEST(0, DATEDIFF(cp.expectedHarvestDate, CURDATE())) AS daysToHarvest
+        FROM cropPlantings cp
+        JOIN crops      c  ON c.cropId       = cp.cropId
+        JOIN fields     f  ON f.fieldId      = cp.fieldId
+        LEFT JOIN farmZones fz ON fz.farmZoneId = f.zoneId
+        WHERE cp.cropStatus NOT IN ('harvested', 'failed')
+        ORDER BY cp.plantedDate DESC
+    `;
+    db.query(query, (err: any, results: any) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
+
+
+// ---------- GET: Crop Growth / Yield Chart ----------
+// There is no cropGrowth table or heightCm column in the schema.
+// Weekly harvest yield from harvestRecords is the correct growth proxy.
+app.get('/api/crops/growth', (req: Request, res: Response) => {
+    const query = `
+        SELECT
+            YEARWEEK(hr.harvestedAt, 3)     AS sortKey,
+            CONCAT('Week ',
+                YEARWEEK(hr.harvestedAt, 3) - YEARWEEK(
+                    (SELECT MIN(harvestedAt) FROM harvestRecords
+                     WHERE harvestedAt >= NOW() - INTERVAL 10 WEEK), 3
+                ) + 1
+            )                               AS week,
+            c.commonName                    AS crop,
+            ROUND(SUM(hr.yieldKg), 2)       AS yieldKg
+        FROM harvestRecords  hr
+        JOIN cropPlantings   cp ON cp.cropPlantingId = hr.plantingId
+        JOIN crops            c  ON c.cropId          = cp.cropId
+        WHERE hr.harvestedAt >= NOW() - INTERVAL 10 WEEK
+        GROUP BY YEARWEEK(hr.harvestedAt, 3), c.cropId, c.commonName
+        ORDER BY sortKey ASC
+    `;
+    db.query(query, (err: any, results: any) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        // Pivot rows → { week: 'Week 1', Spinach: 12.5, Tomato: 8.0 }
+        const pivoted: Record<string, any> = {};
+        for (const row of results) {
+            if (!pivoted[row.sortKey]) pivoted[row.sortKey] = { week: row.week };
+            pivoted[row.sortKey][row.crop] = row.yieldKg;
+        }
+        res.json(Object.values(pivoted));
+    });
+});
+
+// ---------- GET: AI Predictions (latest 20) ----------
+// cropAiPredictions links to cropImages via imageId — no direct cropId
+app.get('/api/crops/predictions', (req: Request, res: Response) => {
+    const query = `
+        SELECT
+            ai.cropAiPredictionId,
+            ai.diseaseName,
+            ai.confidenceScore,
+            ai.status,
+            ai.createdAt,
+            c.commonName    AS cropName,
+            f.fieldName,
+            fz.zoneName
+        FROM cropAiPredictions ai
+        JOIN cropImages      ci ON ci.cropImageId    = ai.imageId
+        JOIN cropPlantings   cp ON cp.cropPlantingId = ci.plantingId
+        JOIN crops            c  ON c.cropId          = cp.cropId
+        JOIN fields           f  ON f.fieldId         = cp.fieldId
+        LEFT JOIN farmZones   fz ON fz.farmZoneId     = f.zoneId
+        ORDER BY ai.createdAt DESC
+        LIMIT 20
+    `;
+    db.query(query, (err: any, results: any) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
+
+// ---------- GET: Crop Images (latest 50, without binary data) ----------
+// imageData (LONGBLOB) is excluded by default — fetch /api/crops/images/:id for the binary
+app.get('/api/crops/images', (req: Request, res: Response) => {
+    const query = `
+        SELECT
+            ci.cropImageId,
+            ci.plantingId,
+            ci.deviceId,
+            ci.takenAt,
+            c.commonName    AS cropName,
+            f.fieldName,
+            fz.zoneName,
+            d.deviceName,
+            -- include latest AI prediction for this image inline
+            ai.status           AS aiStatus,
+            ai.diseaseName      AS aiDiseaseName,
+            ai.confidenceScore  AS aiConfidenceScore
+        FROM cropImages ci
+        JOIN cropPlantings   cp ON cp.cropPlantingId = ci.plantingId
+        JOIN crops            c  ON c.cropId          = cp.cropId
+        JOIN fields           f  ON f.fieldId         = cp.fieldId
+        LEFT JOIN farmZones   fz ON fz.farmZoneId     = f.zoneId
+        LEFT JOIN devices     d  ON d.deviceId        = ci.deviceId
+        LEFT JOIN cropAiPredictions ai ON ai.imageId  = ci.cropImageId
+        ORDER BY ci.takenAt DESC
+        LIMIT 50
+    `;
+    db.query(query, (err: any, results: any) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
+
+// ---------- GET: Single Crop Image (binary) ----------
+app.get('/api/crops/images/:id', (req: Request, res: Response) => {
+    const { id } = req.params;
+    db.query(
+        'SELECT imageData, takenAt FROM cropImages WHERE cropImageId = ?',
+        [id],
+        (err: any, results: any) => {
+            if (err) return res.status(500).json({ error: err.message });
+            if (!results.length) return res.status(404).json({ error: 'Image not found' });
+
+            const buf: Buffer = results[0].imageData;
+            const mime =
+                buf[0] === 0xff && buf[1] === 0xd8 ? 'image/jpeg' :
+                buf[0] === 0x89 && buf[1] === 0x50 ? 'image/png'  : 'image/jpeg';
+
+            res.setHeader('Content-Type', mime);
+            res.send(buf);
+        }
+    );
+});
+
+// ---------- GET: Harvest Records ----------
+// harvestRecords links to cropPlantings via plantingId — not directly to crops
+app.get('/api/crops/harvests', (req: Request, res: Response) => {
+    const query = `
+        SELECT
+            hr.harvestRecordId,
+            hr.harvestedAt,
+            hr.yieldKg,
+            hr.qualityGrade,
+            hr.notes,
+            c.commonName    AS cropName,
+            c.variety,
+            f.fieldName,
+            fz.zoneName
+        FROM harvestRecords hr
+        JOIN cropPlantings  cp ON cp.cropPlantingId = hr.plantingId
+        JOIN crops           c  ON c.cropId          = cp.cropId
+        JOIN fields          f  ON f.fieldId         = cp.fieldId
+        LEFT JOIN farmZones  fz ON fz.farmZoneId     = f.zoneId
+        ORDER BY hr.harvestedAt DESC
+    `;
+    db.query(query, (err: any, results: any) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
+
+// ===================== CREATE / UPDATE ROUTES =====================
+
+// ---------- POST: Add Crop ----------
+// Schema uses commonName — not cropName
+app.post('/api/crops', (req: Request, res: Response) => {
+    const { commonName, scientificName, variety, growthDurationDays, notes } = req.body;
+
+    if (!commonName) return res.status(400).json({ error: 'commonName is required' });
+
+    db.query(
+        'INSERT INTO crops (commonName, scientificName, variety, growthDurationDays, notes) VALUES (?, ?, ?, ?, ?)',
+        [commonName, scientificName ?? null, variety ?? null, growthDurationDays ?? null, notes ?? null],
+        (err: any, result: any) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ message: 'Crop added', cropId: result.insertId });
+        }
+    );
+});
+
+// ---------- POST: Add Planting ----------
+// Schema uses cropStatus (ENUM) and plantedDate — not 'status'/'plantingDate'
+app.post('/api/crops/plantings', (req: Request, res: Response) => {
+    const { cropId, fieldId, cropStatus, plantedDate, expectedHarvestDate, notes } = req.body;
+
+    if (!cropId || !fieldId || !cropStatus || !plantedDate) {
+        return res.status(400).json({ error: 'cropId, fieldId, cropStatus, and plantedDate are required' });
+    }
+
+    const validStatuses = ['planted', 'growing', 'ready_to_harvest', 'harvested', 'failed'];
+    if (!validStatuses.includes(cropStatus)) {
+        return res.status(400).json({ error: `cropStatus must be one of: ${validStatuses.join(', ')}` });
+    }
+
+    const query = `
+        INSERT INTO cropPlantings (cropId, fieldId, cropStatus, plantedDate, expectedHarvestDate, notes)
+        VALUES (?, ?, ?, ?, ?, ?)
+    `;
+    db.query(
+        query,
+        [cropId, fieldId, cropStatus, plantedDate, expectedHarvestDate ?? null, notes ?? null],
+        (err: any, result: any) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ message: 'Planting added', cropPlantingId: result.insertId });
+        }
+    );
+});
+
+// ---------- PATCH: Update Planting Status ----------
+app.patch('/api/crops/plantings/:id/status', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { cropStatus, actualHarvestDate } = req.body;
+
+    const validStatuses = ['planted', 'growing', 'ready_to_harvest', 'harvested', 'failed'];
+    if (!validStatuses.includes(cropStatus)) {
+        return res.status(400).json({ error: `cropStatus must be one of: ${validStatuses.join(', ')}` });
+    }
+
+    db.query(
+        'UPDATE cropPlantings SET cropStatus = ?, actualHarvestDate = ? WHERE cropPlantingId = ?',
+        [cropStatus, actualHarvestDate ?? null, id],
+        (err: any, result: any) => {
+            if (err) return res.status(500).json({ error: err.message });
+            if (result.affectedRows === 0) return res.status(404).json({ error: 'Planting not found' });
+            res.json({ message: 'Status updated' });
+        }
+    );
+});
+
+/// ===================== FULL SENSOR API =====================
+
+// ==========================================================
+// GET ALL AVAILABLE SENSOR TYPES
+// ==========================================================
+app.get('/api/crops/sensors/types', (req: Request, res: Response) => {
+
+    const query = `
+        SELECT DISTINCT sensorType
+        FROM cropSensorReadings
+        ORDER BY sensorType ASC
+    `;
+
+    db.query(query, (err: any, results: any) => {
+
+        if (err) {
+            console.error('Sensor types error:', err.message);
+            return res.status(500).json({ error: err.message });
+        }
+
+        const types = results.map((row: any) => row.sensorType);
+
+        res.json(types);
+    });
+});
+
+// ==========================================================
+// GET LATEST SENSOR VALUES
+// Used for dashboard cards/widgets
+// ==========================================================
+app.get('/api/crops/sensors/latest', (req: Request, res: Response) => {
+
+    const { fieldId } = req.query;
+
+    const query = `
+        SELECT t1.*
+        FROM cropSensorReadings t1
+        INNER JOIN (
+            SELECT sensorType, MAX(recordedAt) AS latest
+            FROM cropSensorReadings
+            WHERE fieldId = ?
+            GROUP BY sensorType
+        ) t2
+        ON t1.sensorType = t2.sensorType
+        AND t1.recordedAt = t2.latest
+        WHERE t1.fieldId = ?
+        ORDER BY t1.sensorType ASC
+    `;
+
+    db.query(query, [fieldId, fieldId], (err: any, results: any) => {
+
+        if (err) {
+            console.error('Latest sensors error:', err.message);
+            return res.status(500).json({ error: err.message });
+        }
+
+        const formatted = results.map((row: any) => ({
+            sensorType: row.sensorType,
+            value: row.sensorValue,
+            recordedAt: row.recordedAt
+        }));
+
+        res.json(formatted);
+    });
+});
+
+// ==========================================================
+// LIVE SENSOR GRAPH DATA
+// Used for real-time line charts
+// ==========================================================
+app.get('/api/crops/sensors/live', (req: Request, res: Response) => {
+
+    const {
+        fieldId,
+        sensorType,
+        range = '1h'
+    } = req.query;
+
+    let interval = '1 HOUR';
+
+    if (range === '6h') interval = '6 HOUR';
+    if (range === '24h') interval = '24 HOUR';
+    if (range === '7d') interval = '7 DAY';
+
+    const query = `
+        SELECT
+            recordedAt,
+            sensorValue
+        FROM cropSensorReadings
+        WHERE fieldId = ?
+        AND sensorType = ?
+        AND recordedAt >= NOW() - INTERVAL ${interval}
+        ORDER BY recordedAt ASC
+    `;
+
+    db.query(query, [fieldId, sensorType], (err: any, results: any) => {
+
+        if (err) {
+            console.error('Live sensor error:', err.message);
+            return res.status(500).json({ error: err.message });
+        }
+
+        const formatted = results.map((row: any) => ({
+            time: new Date(row.recordedAt).toLocaleTimeString(),
+            value: Number(row.sensorValue)
+        }));
+
+        res.json(formatted);
+    });
+});
+
+// ==========================================================
+// SENSOR HISTORY
+// Paginated historical data
+// ==========================================================
+app.get('/api/crops/sensors/history', (req: Request, res: Response) => {
+
+    const {
+        fieldId,
+        sensorType,
+        limit = 100,
+        offset = 0
+    } = req.query;
+
+    const query = `
+        SELECT
+            readingId,
+            fieldId,
+            sensorType,
+            sensorValue,
+            recordedAt
+        FROM cropSensorReadings
+        WHERE fieldId = ?
+        AND sensorType = ?
+        ORDER BY recordedAt DESC
+        LIMIT ? OFFSET ?
+    `;
+
+    db.query(
+        query,
+        [
+            fieldId,
+            sensorType,
+            Number(limit),
+            Number(offset)
+        ],
+        (err: any, results: any) => {
+
+            if (err) {
+                console.error('Sensor history error:', err.message);
+                return res.status(500).json({ error: err.message });
+            }
+
+            res.json(results);
+        }
+    );
+});
+
+// ==========================================================
+// SENSOR SUMMARY
+// Average values over 24h
+// ==========================================================
+app.get('/api/crops/sensors/summary', (req: Request, res: Response) => {
+
+    const { fieldId } = req.query;
+
+    const query = `
+        SELECT
+            sensorType,
+            AVG(sensorValue) AS averageValue,
+            MIN(sensorValue) AS minValue,
+            MAX(sensorValue) AS maxValue
+        FROM cropSensorReadings
+        WHERE fieldId = ?
+        AND recordedAt >= NOW() - INTERVAL 24 HOUR
+        GROUP BY sensorType
+        ORDER BY sensorType ASC
+    `;
+
+    db.query(query, [fieldId], (err: any, results: any) => {
+
+        if (err) {
+            console.error('Sensor summary error:', err.message);
+            return res.status(500).json({ error: err.message });
+        }
+
+        const formatted = results.map((row: any) => ({
+            sensorType: row.sensorType,
+            average: Number(row.averageValue),
+            min: Number(row.minValue),
+            max: Number(row.maxValue)
+        }));
+
+        res.json(formatted);
+    });
+});
+
+// ==========================================================
+// INSERT SENSOR READING
+// Used by IoT devices / simulators
+// ==========================================================
+app.post('/api/crops/sensors', (req: Request, res: Response) => {
+
+    const {
+        fieldId,
+        sensorType,
+        sensorValue
+    } = req.body;
+
+    if (
+        !fieldId ||
+        !sensorType ||
+        sensorValue === undefined
+    ) {
+        return res.status(400).json({
+            error: 'Missing required fields'
+        });
+    }
+
+    const query = `
+        INSERT INTO cropSensorReadings
+        (
+            fieldId,
+            sensorType,
+            sensorValue,
+            recordedAt
+        )
+        VALUES (?, ?, ?, NOW())
+    `;
+
+    db.query(
+        query,
+        [
+            fieldId,
+            sensorType,
+            sensorValue
+        ],
+        (err: any, result: any) => {
+
+            if (err) {
+                console.error('Insert sensor error:', err.message);
+                return res.status(500).json({ error: err.message });
+            }
+
+            res.json({
+                message: 'Sensor reading recorded',
+                id: result.insertId
+            });
+        }
+    );
+});
+
+// ==========================================================
+// DELETE SENSOR HISTORY
+// Optional admin/dev route
+// ==========================================================
+app.delete('/api/crops/sensors', (req: Request, res: Response) => {
+
+    db.query(
+        'DELETE FROM cropSensorReadings',
+        (err: any) => {
+
+            if (err) {
+                console.error('Delete sensor data error:', err.message);
+                return res.status(500).json({ error: err.message });
+            }
+
+            res.json({
+                message: 'All sensor data deleted'
+            });
+        }
+    );
+});
+
+// ---------- POST: Add Harvest Record ----------
+
+app.post('/api/crops/harvests', (req: Request, res: Response) => {
+    const { plantingId, yieldKg, qualityGrade, notes } = req.body;
+
+    if (!plantingId) return res.status(400).json({ error: 'plantingId is required' });
+
+    const query = `
+        INSERT INTO harvestRecords (plantingId, yieldKg, qualityGrade, notes)
+        VALUES (?, ?, ?, ?)
+    `;
+    db.query(
+        query,
+        [plantingId, yieldKg ?? null, qualityGrade ?? null, notes ?? null],
+        (err: any, result: any) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ message: 'Harvest record added', harvestRecordId: result.insertId });
+        }
+    );
+});
