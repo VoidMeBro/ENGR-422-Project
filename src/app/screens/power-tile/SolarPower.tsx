@@ -12,7 +12,7 @@ export const useSolarPower = () => {
 
 useEffect(() => {
     const fetchData = () => {
-      fetch('http://localhost:5000/api/solar-hourly')
+      fetch('api/solar-hourly')
         .then((res) => res.json())
         .then((data) => {
           // Safety Check: Ensure 'data' is actually an array
@@ -65,7 +65,7 @@ export const powerOutFunction = () => {
 
 useEffect(() => {
     const fetchData = () => {
-      fetch('http://localhost:5000/api/power-out')
+      fetch('api/power-out')
         .then((res) => res.json())
         .then((data) => {
           // Safety Check: Ensure 'data' is actually an array
@@ -124,7 +124,7 @@ export const useZonePower = (refreshInterval = 30000) => {
 
     const getPowerData = async () => {
         try {
-            const response = await fetch('http://localhost:5000/api/zone-power-usage');
+            const response = await fetch('api/zone-power-usage');
             const data = await response.json();
             
             // 1. First, parse all incoming data to ensure we have numbers

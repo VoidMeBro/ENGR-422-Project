@@ -570,7 +570,7 @@ app.get('/api/batteryLevel', (req, res) => {
 });
 
 app.get('/api/lightLevel', (req, res) => {
-    const query = 'SELECT lightLevel FROM solarReadings';
+    const query = 'SELECT lightLevel FROM solarReadings ORDER BY solarReadingId DESC LIMIT 1';
 
     db.query(query, (err: Error | null, results: any) => {
         if(err) {
@@ -590,7 +590,7 @@ app.get('/api/solar-hourly', (req: Request, res: Response) => {
         SELECT 
             DATE_FORMAT(takenAt, '%Y-%m-%d %H:00:00') AS hour_bucket, 
             AVG(powerGeneratedKw) AS avg_power
-        FROM solarreadings 
+        FROM solarReadings 
         GROUP BY hour_bucket
         ORDER BY hour_bucket DESC 
         LIMIT 24;
@@ -701,6 +701,36 @@ app.get('/api/water-sensor-readings', (req, res) => {
         res.json(results);
     });
 });
+
+//ssh to pi
+import { NodeSSH } from 'node-ssh';
+
+app.post('/api/door', async (req: Request, res: Response) => {
+    const { state } = req.body; 
+    
+    const ssh = new NodeSSH();
+    
+    try {
+        await ssh.connect({
+            host: process.env.PI_HOST,        
+            username: process.env.PI_USER,    
+            password: process.env.PI_PASS,
+        });
+
+        const command = state === 'open' 
+            ? 'python3 ~/door_open.py' 
+            : 'python3 ~/door_close.py';
+
+        const result = await ssh.execCommand(command);
+        ssh.dispose();
+
+        res.json({ success: true, output: result.stdout });
+    } catch (err) {
+        console.error('SSH error:', err);
+        res.status(500).json({ error: 'Failed to connect to Pi' });
+    }
+});
+
 
 app.listen(5000, () => console.log('Server running on port 5000'));
 

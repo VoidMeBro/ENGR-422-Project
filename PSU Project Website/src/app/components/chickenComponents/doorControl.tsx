@@ -102,7 +102,15 @@ function DoorControl({ doorState, setDoorState, times , setOpenTime, setCloseTim
                         <p id = "door-status" className = "closedDoor">Door Closed!</p>
                     )}
                     <hr className="coop-hr"/>
-                    <button id = "control-door" onClick={()=> setDoorState(!doorState)}>
+                        <button id="control-door" onClick={async () => {
+                        const newState = !doorState;
+                        setDoorState(newState);
+                        await fetch('/api/door', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ state: newState ? 'open' : 'close' })
+                        });
+                    }}>
                         {doorState ? "Close Door" : "Open Door"}
                     </button>
                     <form id = "door-form" ref={formRef} onSubmit={handleSubmit} onBlur={handleBlur} noValidate>
