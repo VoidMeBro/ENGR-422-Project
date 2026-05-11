@@ -16,6 +16,7 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+/*
 const db = mysql.createConnection({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -33,7 +34,26 @@ const db = mysql.createConnection({
     console.log('Connected to MySQL database');
   }
 });
+*/
 
+//pool is just better and more stable.
+const db = mysql.createPool({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+});
+
+db.query('SELECT 1', (err) => {
+  if (err) {
+    console.error('Database connection failed:', err.message);
+  } else {
+    console.log('Connected to MySQL database');
+  }
+});
 
 
 //----- login route/API, checks if the username exists and if the password matches------//
@@ -64,43 +84,6 @@ app.post('/api/login', async (req: Request, res: Response) => {
 });
 
 
-
-
-//====================================old login API that does not hash passwords===============================
-/*
-app.post('/api/login', async (req: Request, res: Response) => {
-  const { username, password } = req.body;
-
-    db.query(
-    'SELECT userId, password, username FROM users WHERE username = ?',
-    [username],
-    (err: Error | null, results: any[]) => {
-      if (err) return res.status(500).json({ error: err.message });
-
-      if (results.length === 0) {
-        return res.status(401).json({ success: false, message: "Username does not exist" });
-      }
-
-      //console.logs are just for testing to see wherethe problem is, can be removed later
-      console.log('Password entered:', JSON.stringify(password));
-      console.log('Password in DB:',   JSON.stringify(results[0].password));
-      console.log('Match:', password === results[0].password);
-
-      // Plain text comparison since passwords aren't hashed yet
-      if (password === results[0].password) {
-        res.json({ success: true,
-                                            //for more safety, Only id and username are sent to the front end for more safety.
-            user: results[0].userId});      //sets the UserID in the front end
-            UserID = results[0].userId;     //sets the UserID to use in queries inside the Backend
-
-      } else {
-        res.status(401).json({ success: false, message: "Incorrect password" });
-      }
-    }
-  );
-});
-*/
-//====================================old login API that does not hash passwords===============================
 
 
 
@@ -146,36 +129,177 @@ app.post('/api/register', async (req: Request, res: Response) => {
 });
 
 
-//====================================old register API that does not hash passwords===============================
-/*
-app.post('/api/register', (req: Request, res: Response) => {
-  const { firstName, lastName, username, email, password, role, institution } = req.body;
-  const roleMap: Record<string, number> = {
-  student: 1,
-  faculty: 2,
-  researcher: 3,
-  administrator: 4,
-  community: 5,
-  observer: 6
-};
-const roleId = roleMap[role.toLowerCase()] || 0; // Default to 0 if role is not recognized
+//===========================================================================================================//
 
-  console.log('Register payload:', { firstName, lastName, username, email, roleId, institution }); // logs the input from the form
+//=====Dashboard stuff===================================================================================//
 
-  db.query(
-    'INSERT INTO `users`(`firstName`, `lastName`, `username`, `email`, `password`, `roleID`, `institution`) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [firstName, lastName, username, email, password, roleId, institution],
-    (err: Error | null) => {
-      if (err) {
-        console.error('MySQL error:', err.message); // This will display errors in the terminal for debugging
-        return res.status(500).json({ error: err.message });
-      }
-      res.json({ success: true, message: "User registered successfully" });
-    }
-  );
+//===========================================================================================================//
+
+//displays 3 of the 4 blocks at the bottom (soil temp is excluded)
+app.get('/api/dashboard/summary', (req: Request, res: Response) => {
+  const queries = {
+    currentPower: `
+      SELECT powerUsageKw
+      FROM powerOutputLogs
+      ORDER BY takenAt DESC
+      LIMIT 1
+    `,
+    waterAvailable: `
+      SELECT SUM(capacityLiters) AS totalLiters
+      FROM waterSources
+    `,
+    deviceHealth: `
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status = 'online' THEN 1 ELSE 0 END) AS online
+      FROM devices
+    `
+  };
+ 
+  Promise.all([
+    new Promise<any>((resolve, reject) =>
+      db.query(queries.currentPower, (err: Error | null, results: any) => {
+        if (err) reject(err);
+        else resolve(results[0]?.powerUsageKw ?? 0);
+      })
+    ),
+    new Promise<any>((resolve, reject) =>
+      db.query(queries.waterAvailable, (err: Error | null, results: any) => {
+        if (err) reject(err);
+        else resolve(Number(results[0]?.totalLiters) || 0);
+      })
+    ),
+    new Promise<any>((resolve, reject) =>
+      db.query(queries.deviceHealth, (err: Error | null, results: any) => {
+        if (err) reject(err);
+        else resolve(results[0]);
+      })
+    )
+  ])
+    .then(([currentPowerKw, waterAvailableL, deviceRow]) => {
+      const total = Number(deviceRow?.total) || 0;
+      const online = Number(deviceRow?.online) || 0;
+      const systemHealthPct = total > 0 ? Math.round((online / total) * 100) : 0;
+ 
+      res.json({
+        currentPowerKw: Number(currentPowerKw),
+        waterAvailableL: Number(waterAvailableL),
+        systemHealthPct,
+        onlineDevices: online,
+        totalDevices: total
+      });
+    })
+    .catch((err) => res.status(500).json({ error: err.message }));
 });
-*/
-//====================================old login API that does not hash passwords===============================
+
+
+
+//creates the chart for the power generation/usage
+app.get('/api/dashboard/power-chart', (req: Request, res: Response) => {
+  const solarQuery = `
+    SELECT
+      DATE_FORMAT(takenAt, '%H:00') AS time,
+      AVG(powerGeneratedKw)         AS generation
+    FROM solarReadings
+    WHERE takenAt >= NOW() - INTERVAL 24 HOUR
+    GROUP BY DATE_FORMAT(takenAt, '%H:00')
+    ORDER BY DATE_FORMAT(takenAt, '%H:00') ASC
+  `;
+ 
+  const usageQuery = `
+    SELECT
+      DATE_FORMAT(takenAt, '%H:00') AS time,
+      AVG(powerUsageKw)             AS usage
+    FROM powerOutputLogs
+    WHERE takenAt >= NOW() - INTERVAL 24 HOUR
+    GROUP BY DATE_FORMAT(takenAt, '%H:00')
+    ORDER BY DATE_FORMAT(takenAt, '%H:00') ASC
+  `;
+ 
+  Promise.all([
+    new Promise<any[]>((resolve, reject) =>
+      db.query(solarQuery, (err: Error | null, results: any) => {
+        if (err) reject(err);
+        else resolve(results);
+      })
+    ),
+    new Promise<any[]>((resolve, reject) =>
+      db.query(usageQuery, (err: Error | null, results: any) => {
+        if (err) reject(err);
+        else resolve(results);
+      })
+    )
+  ])
+    .then(([solarRows, usageRows]) => {
+      // Merge the two result sets on the 'time' key
+      const map: Record<string, { time: string; generation: number; usage: number }> = {};
+ 
+      for (const row of solarRows) {
+        map[row.time] = { time: row.time, generation: Number(row.generation) || 0, usage: 0 };
+      }
+      for (const row of usageRows) {
+        if (map[row.time]) {
+          map[row.time].usage = Number(row.usage) || 0;
+        } else {
+          map[row.time] = { time: row.time, generation: 0, usage: Number(row.usage) || 0 };
+        }
+      }
+ 
+      // Sort chronologically and return
+      const sorted = Object.values(map).sort((a, b) =>
+        a.time.localeCompare(b.time)
+      );
+ 
+      res.json(sorted);
+    })
+    .catch((err) => res.status(500).json({ error: err.message }));
+});
+
+//create the chart for water in the last 24 hours
+app.get('/api/dashboard/water-chart', (req: Request, res: Response) => {
+  const query = `
+    SELECT
+      DATE_FORMAT(takenAt, '%H:00') AS time,
+      AVG(depthLevelCm)             AS level
+    FROM waterSensorReadings
+    WHERE takenAt >= NOW() - INTERVAL 24 HOUR
+    GROUP BY DATE_FORMAT(takenAt, '%H:00')
+    ORDER BY DATE_FORMAT(takenAt, '%H:00') ASC
+  `;
+ 
+  db.query(query, (err: Error | null, results: any) => {
+    if (err) return res.status(500).json({ error: err.message });
+ 
+    const formatted = (results as any[]).map((row) => ({
+      time: row.time,
+      level: Number(row.level) || 0
+    }));
+ 
+    res.json(formatted);
+  });
+});
+
+//checks the status of all devices connected to calculate health
+app.get('/api/dashboard/devices', (req: Request, res: Response) => {
+  const query = `
+    SELECT
+      deviceName,
+      protocol,
+      status,
+      lastSeen
+    FROM devices
+    WHERE protocol IN ('LoRa', 'Meshtastic')
+    ORDER BY deviceName ASC
+  `;
+ 
+  db.query(query, (err: Error | null, results: any) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(results);
+  });
+});
+
+
+
 
 
 
