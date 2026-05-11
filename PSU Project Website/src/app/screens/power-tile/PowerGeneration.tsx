@@ -238,7 +238,7 @@ export function PowerGeneration() {
         {/* Light Level
             Storing the result in a variable avoids calling
             LightLevelPercentage() twice on the same render. */}
-        <Card>
+        {/* <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
               <Sun className="w-5 h-5 text-yellow-500" />
@@ -259,10 +259,10 @@ export function PowerGeneration() {
               );
             })()}
           </CardContent>
-        </Card>
+        </Card> */}
 
         {/* Sun Times — displays values from useSunData() */}
-        <Card>
+        <Card className="w-full col-span-full">
           <CardHeader className="pb-3">
             <CardTitle>Sun Times - Bela Bela, Gauteng</CardTitle>
           </CardHeader>

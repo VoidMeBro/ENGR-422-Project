@@ -134,7 +134,7 @@ const energyDistribution = useMemo(() => {
           {/* Sunrise & Sunset Times */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle>Sun Times - Bela Bela, Gauteng</CardTitle>
+              <CardTitle>Sun Times what ya meana- Bela Bela, Gauteng</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4">
