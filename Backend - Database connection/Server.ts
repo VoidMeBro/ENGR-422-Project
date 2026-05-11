@@ -702,6 +702,36 @@ app.get('/api/water-sensor-readings', (req, res) => {
     });
 });
 
+//ssh to pi
+import { NodeSSH } from 'node-ssh';
+
+app.post('/api/door', async (req: Request, res: Response) => {
+    const { state } = req.body; 
+    
+    const ssh = new NodeSSH();
+    
+    try {
+        await ssh.connect({
+            host: process.env.PI_HOST,        
+            username: process.env.PI_USER,    
+            password: process.env.PI_PASS,
+        });
+
+        const command = state === 'open' 
+            ? 'python3 ~/door_open.py' 
+            : 'python3 ~/door_close.py';
+
+        const result = await ssh.execCommand(command);
+        ssh.dispose();
+
+        res.json({ success: true, output: result.stdout });
+    } catch (err) {
+        console.error('SSH error:', err);
+        res.status(500).json({ error: 'Failed to connect to Pi' });
+    }
+});
+
+
 app.listen(5000, () => console.log('Server running on port 5000'));
 
 
