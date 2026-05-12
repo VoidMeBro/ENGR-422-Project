@@ -20,7 +20,6 @@ import { Badge } from "../../components/ui/badge";
 import { useIsMobile } from "../../components/ui/use-mobile";
 import { Progress } from "../../components/ui/progress";
 import { BatteryStatus, useBatteryData } from "./BatteryLevel";
-import { LightLevelPercentage } from "./LightLevel";
 import { useSunData } from "./SunData";
 import { useSolarPower, useZonePower, powerOutFunction } from "./SolarPower";
 import { generatePowerWarnings } from "./PowerWarnings";

@@ -30,7 +30,7 @@ import {
 import { Badge } from "../../components/ui/badge";
 import { useEffect, useState } from "react";
 
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = "/api";
 
 // =====================================================
 // TYPE DEFINITIONS (matching database schema)
@@ -121,6 +121,7 @@ export function CropFarm() {
   // =====================================================
   const loadCropZones = async () => {
     try {
+      setError(null);
       const response = await fetch(`${API_BASE}/farmzones?tileId=crop`);
       if (!response.ok) throw new Error("Failed to fetch crop zones");
       const data = await response.json();
@@ -131,6 +132,8 @@ export function CropFarm() {
     } catch (err) {
       console.error("Error loading crop zones:", err);
       setError("Failed to load crop zones");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -846,3 +849,4 @@ export function CropFarm() {
       </Card>
     </div>
   );
+}

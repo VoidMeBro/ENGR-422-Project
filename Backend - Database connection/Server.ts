@@ -42,6 +42,7 @@ const db = mysql.createPool({
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
+    decimalNumbers: true,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
@@ -116,7 +117,7 @@ app.post('/api/register', async (req: Request, res: Response) => {
   const hashedPassword = await bcrypt.hash(password, 12);
 
   db.query(
-    'INSERT INTO `users`(`firstName`, `lastName`, `username`, `email`, `password`, `roleID`, `institution`) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO `users`(`firstName`, `lastName`, `username`, `email`, `password`, `roleId`, `institution`) VALUES (?, ?, ?, ?, ?, ?, ?)',
     [firstName, lastName, username, email, hashedPassword, roleId, institution], // ← hashedPassword here
     (err: Error | null) => {
       if (err) {
@@ -448,7 +449,7 @@ app.get('/api/getChickenNames', (req, res) => {
 app.post('/api/addChickenEgg', (req, res) => {
     const {rfid, recordedAt, eggCount} = req.body;
     const formattedDate = recordedAt.replace("T", " ") + ":00";
-    const query = 'INSERT INTO chickeneggs (rfid, recordedAt, eggCount) VALUES (?, ?, ?)';
+    const query = 'INSERT INTO chickenEggs (rfid, recordedAt, eggCount) VALUES (?, ?, ?)';
     db.query(query, [rfid, formattedDate, eggCount], (err: Error | null, _results: any) => {
         if(err){
             console.log("Query error:", err);
@@ -622,10 +623,28 @@ app.put('/api/updateDoorTimes', (req, res) => {
 });
 
 app.delete("/api/clear", (req, res) => {
-    db.query("DELETE FROM eggs");
-    db.query("DELETE FROM predators");
-    db.query("DELETE FROM movement");
-        res.json({ message: "All data cleared" });
+    const deleteQueries = [
+        'DELETE FROM chickenEggs',
+        'DELETE FROM predatorLog',
+        'DELETE FROM coopActivityLogs'
+    ];
+
+    Promise.all(
+        deleteQueries.map(
+            (query) =>
+                new Promise<void>((resolve, reject) => {
+                    db.query(query, (err: Error | null) => {
+                        if (err) reject(err);
+                        else resolve();
+                    });
+                })
+        )
+    )
+        .then(() => res.json({ message: "All data cleared" }))
+        .catch((err: Error) => {
+            console.error('Error clearing legacy data:', err);
+            res.status(500).json({ error: 'Database clear error' });
+        });
 });
 
 app.put('/api/updateCleaningTimes', (req, res) => {
@@ -643,10 +662,11 @@ app.put('/api/updateCleaningTimes', (req, res) => {
 
 
 app.post('/api/addCleaningLog', (req, res) => {
-    const { coopId, lastCleaned, NextCleanDue, weightKg, notes } = req.body;
-    const query = 'INSERT INTO coopCleaningLogs (coopId, lastCleaned, NextCleanDue, weightKg, notes) VALUES (?, ?, ?, ?, ?)';
+    const { coopId, lastCleaned, nextCleanDue, NextCleanDue, weightKg, notes } = req.body;
+    const cleanDue = nextCleanDue ?? NextCleanDue ?? null;
+    const query = 'INSERT INTO coopCleaningLogs (coopId, lastCleaned, nextCleanDue, weightKg, notes) VALUES (?, ?, ?, ?, ?)';
 
-    db.query(query, [coopId, lastCleaned, NextCleanDue, weightKg, notes], (err: Error | null, _results: any) => {
+    db.query(query, [coopId, lastCleaned, cleanDue, weightKg, notes], (err: Error | null, _results: any) => {
         if (err) {
             console.error('Error adding cleaning log:', err);
             return res.status(500).json({ error: 'Database insert error' });
@@ -764,7 +784,7 @@ app.get('/api/solar-hourly', (req: Request, res: Response) => {
 
 app.get('/api/power-out', (req: Request, res: Response) => {
 
-    const query = `
+    const usageQuery = `
         SELECT 
             DATE_FORMAT(takenAt, '%Y-%m-%d %H:00:00') AS per_hour, 
             AVG(powerUsageKw) AS average_power
@@ -774,15 +794,39 @@ app.get('/api/power-out', (req: Request, res: Response) => {
         LIMIT 24;
     `;
 
-    db.query(query, (err: Error | null, results: any) => {
+    const fallbackQuery = `
+        SELECT
+            DATE_FORMAT(sr.takenAt, '%Y-%m-%d %H:00:00') AS per_hour,
+            AVG(sr.powerGeneratedKw) AS average_power
+        FROM solarReadings sr
+        GROUP BY per_hour
+        ORDER BY per_hour DESC
+        LIMIT 24;
+    `;
+
+    db.query(usageQuery, (err: Error | null, results: any) => {
         if (err) {
             console.error("Database Error:", err);
             return res.status(500).json({ error: 'Database query error' });
         }
-        
-        // Reverse the results so the chart reads Left -> Right (Oldest -> Newest)
-        const chronologicalData = Array.isArray(results) ? [...results].reverse() : [];
-        res.json(chronologicalData);
+
+        if (Array.isArray(results) && results.length > 0) {
+            const chronologicalData = [...results].reverse();
+            return res.json(chronologicalData);
+        }
+
+        db.query(fallbackQuery, (fallbackErr: Error | null, fallbackResults: any) => {
+            if (fallbackErr) {
+                console.error("Fallback database error:", fallbackErr);
+                return res.status(500).json({ error: 'Database query error' });
+            }
+
+            const chronologicalData = Array.isArray(fallbackResults)
+                ? [...fallbackResults].reverse()
+                : [];
+
+            res.json(chronologicalData);
+        });
     });
 });
 
@@ -822,15 +866,37 @@ app.get('/api/zone-power-usage', (req: Request, res: Response) => {
         ORDER BY totalPower DESC;
     `;
 
+    const fallbackQuery = `
+        SELECT
+            fz.zoneName,
+            ROUND(SUM(sr.powerGeneratedKw), 3) AS totalPower
+        FROM solarReadings sr
+        JOIN solarPanel sp ON sp.solarPanelId = sr.solarPanelId
+        JOIN farmZones fz ON fz.farmZoneId = sp.zoneId
+        GROUP BY fz.zoneName
+        ORDER BY totalPower DESC;
+    `;
+
     db.query(query, (err: Error | null, results: any) => {
         if (err) {
             console.error("Database Error:", err);
             return res.status(500).json({ error: 'Database query error' });
         }
 
-        // Return the results directly for the Pie Chart
-        // Expected format: [{ zoneName: 'Zone A', totalPower: 500 }, ...]
-        res.json(results);
+        if (Array.isArray(results) && results.length > 0) {
+            // Return the results directly for the Pie Chart
+            // Expected format: [{ zoneName: 'Zone A', totalPower: 500 }, ...]
+            return res.json(results);
+        }
+
+        db.query(fallbackQuery, (fallbackErr: Error | null, fallbackResults: any) => {
+            if (fallbackErr) {
+                console.error("Fallback database error:", fallbackErr);
+                return res.status(500).json({ error: 'Database query error' });
+            }
+
+            res.json(fallbackResults);
+        });
     });
 });
 
@@ -842,7 +908,7 @@ app.get('/api/water-sensor-readings', (req, res) => {
 
     const query = `
         SELECT *
-        FROM watersensorreadings
+        FROM waterSensorReadings
         ORDER BY takenAt ${order}
         LIMIT ?
     `;
@@ -853,6 +919,110 @@ app.get('/api/water-sensor-readings', (req, res) => {
             return res.status(500).json({ error: 'Database query error' });
         }
         res.json(results);
+    });
+});
+
+app.get('/api/valves', (req: Request, res: Response) => {
+    const query = `
+        SELECT
+            valve.id,
+            COALESCE(
+                JSON_UNQUOTE(JSON_EXTRACT(tm.payload, '$.state')),
+                'closed'
+            ) AS state,
+            COALESCE(
+                DATE_FORMAT(tm.sentAt, '%Y-%m-%d %H:%i:%s'),
+                'Never'
+            ) AS lastChanged
+        FROM (
+            SELECT 1 AS id
+            UNION ALL
+            SELECT 2 AS id
+        ) AS valve
+        LEFT JOIN tileMessages tm
+            ON tm.messageId = (
+                SELECT tm2.messageId
+                FROM tileMessages tm2
+                WHERE tm2.destTile = 'Water Distribution Tile'
+                  AND tm2.msgType = 'command'
+                  AND CAST(JSON_UNQUOTE(JSON_EXTRACT(tm2.payload, '$.valveId')) AS UNSIGNED) = valve.id
+                ORDER BY tm2.sentAt DESC, tm2.messageId DESC
+                LIMIT 1
+            )
+        ORDER BY valve.id ASC
+    `;
+
+    db.query(query, (err: Error | null, results: any) => {
+        if (err) {
+            console.error('Valve query error:', err);
+            return res.status(500).json({ error: 'Database query error' });
+        }
+
+        const normalized = Array.isArray(results)
+            ? results.map((row: any) => ({
+                id: Number(row.id),
+                state: row.state === 'open' ? 'open' : 'closed',
+                lastChanged: row.lastChanged,
+            }))
+            : [];
+
+        res.json(normalized);
+    });
+});
+
+app.put('/api/valves/:id', (req: Request, res: Response) => {
+    const valveId = Number(req.params.id);
+    const { state } = req.body;
+
+    if (![1, 2].includes(valveId)) {
+        return res.status(400).json({ error: 'Valve id must be 1 or 2' });
+    }
+
+    if (state !== 'open' && state !== 'closed') {
+        return res.status(400).json({ error: 'state must be "open" or "closed"' });
+    }
+
+    const valveNodeQuery = `
+        SELECT nodeId, nodeName
+        FROM waterDistributionNodes
+        WHERE LOWER(nodeType) = 'valve'
+        ORDER BY nodeId ASC
+        LIMIT 1
+    `;
+
+    db.query(valveNodeQuery, (nodeErr: Error | null, nodeResults: any) => {
+        if (nodeErr) {
+            console.error('Valve node lookup error:', nodeErr);
+            return res.status(500).json({ error: 'Database query error' });
+        }
+
+        const valveNode = Array.isArray(nodeResults) ? nodeResults[0] : null;
+
+        if (!valveNode) {
+            return res.status(404).json({ error: 'No valve node configured in waterDistributionNodes' });
+        }
+
+        const insertQuery = `
+            INSERT INTO tileMessages (srcTile, destTile, msgType, payload)
+            VALUES (?, ?, ?, JSON_OBJECT('nodeId', ?, 'nodeName', ?, 'valveId', ?, 'state', ?))
+        `;
+
+        db.query(
+            insertQuery,
+            ['Website Dashboard', 'Water Distribution Tile', 'command', valveNode.nodeId, valveNode.nodeName, valveId, state],
+            (insertErr: Error | null) => {
+                if (insertErr) {
+                    console.error('Valve command insert error:', insertErr);
+                    return res.status(500).json({ error: 'Database insert error' });
+                }
+
+                res.json({
+                    id: valveId,
+                    state,
+                    lastChanged: new Date().toISOString(),
+                });
+            }
+        );
     });
 });
 
@@ -904,6 +1074,79 @@ app.listen(5000, () => console.log('Server running on port 5000'));
 //   farmZones         → farmZoneId, zoneName
 
 
+// ---------- GET: Crop Tile Farm Zones ----------
+app.get('/api/farmzones', (req: Request, res: Response) => {
+    const { tileId } = req.query;
+
+    let query = `
+        SELECT
+            fz.farmZoneId,
+            fz.farmId,
+            fz.zoneName,
+            fz.tileId,
+            fz.description,
+            fz.areaSqMeter,
+            fz.createdAt
+        FROM farmZones fz
+        LEFT JOIN tiles t ON t.tileId = fz.tileId
+    `;
+    const params: Array<number | string> = [];
+
+    if (tileId !== undefined) {
+        const normalizedTileId = String(tileId).trim().toLowerCase();
+
+        if (normalizedTileId === 'crop') {
+            query += ` WHERE LOWER(t.tileName) = 'crop tile' `;
+        } else {
+            const numericTileId = Number(tileId);
+
+            if (!Number.isInteger(numericTileId)) {
+                return res.status(400).json({ error: 'tileId must be "crop" or a numeric tile id' });
+            }
+
+            query += ` WHERE fz.tileId = ? `;
+            params.push(numericTileId);
+        }
+    }
+
+    query += ` ORDER BY fz.zoneName ASC `;
+
+    db.query(query, params, (err: any, results: any) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
+
+
+// ---------- GET: Fields for a Zone ----------
+app.get('/api/fields', (req: Request, res: Response) => {
+    const zoneId = Number(req.query.zoneId);
+
+    if (!Number.isInteger(zoneId)) {
+        return res.status(400).json({ error: 'zoneId is required and must be an integer' });
+    }
+
+    const query = `
+        SELECT
+            fieldId,
+            zoneId,
+            fieldName,
+            areaM2,
+            soilType,
+            notes,
+            createdAt
+        FROM fields
+        WHERE zoneId = ?
+        ORDER BY fieldName ASC
+    `;
+
+    db.query(query, [zoneId], (err: any, results: any) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
+
+
 // ---------- GET: All Crops ----------
 app.get('/api/crops', (req: Request, res: Response) => {
     db.query('SELECT * FROM crops ORDER BY commonName ASC', (err: any, results: any) => {
@@ -937,6 +1180,83 @@ app.get('/api/crops/fields', (req: Request, res: Response) => {
 // ---------- GET: Active Plantings ----------
 // cropPlantings uses cropStatus (ENUM) and plantedDate — not 'status'/'plantingDate'
 app.get('/api/crops/plantings', (req: Request, res: Response) => {
+    const zoneIdParam = req.query.zoneId;
+
+    if (zoneIdParam !== undefined) {
+        const zoneId = Number(zoneIdParam);
+
+        if (!Number.isInteger(zoneId)) {
+            return res.status(400).json({ error: 'zoneId must be an integer' });
+        }
+
+        const zoneQuery = `
+            SELECT
+                cp.cropPlantingId,
+                cp.fieldId,
+                cp.cropId,
+                cp.cropStatus,
+                cp.plantedDate,
+                cp.expectedHarvestDate,
+                cp.actualHarvestDate,
+                cp.notes,
+                cp.createdAt,
+                c.commonName,
+                c.scientificName,
+                c.variety,
+                c.growthDurationDays,
+                c.notes AS cropNotes,
+                f.zoneId,
+                f.fieldName,
+                f.areaM2,
+                f.soilType,
+                f.notes AS fieldNotes,
+                f.createdAt AS fieldCreatedAt
+            FROM cropPlantings cp
+            JOIN crops c ON c.cropId = cp.cropId
+            JOIN fields f ON f.fieldId = cp.fieldId
+            WHERE f.zoneId = ?
+              AND cp.cropStatus NOT IN ('harvested', 'failed')
+            ORDER BY cp.plantedDate DESC
+        `;
+
+        db.query(zoneQuery, [zoneId], (err: any, results: any) => {
+            if (err) return res.status(500).json({ error: err.message });
+
+            const formatted = results.map((row: any) => ({
+                cropPlantingId: row.cropPlantingId,
+                fieldId: row.fieldId,
+                cropId: row.cropId,
+                cropStatus: row.cropStatus,
+                plantedDate: row.plantedDate,
+                expectedHarvestDate: row.expectedHarvestDate,
+                actualHarvestDate: row.actualHarvestDate,
+                notes: row.notes,
+                createdAt: row.createdAt,
+                crop: {
+                    cropId: row.cropId,
+                    commonName: row.commonName,
+                    scientificName: row.scientificName,
+                    variety: row.variety,
+                    growthDurationDays: row.growthDurationDays,
+                    notes: row.cropNotes
+                },
+                field: {
+                    fieldId: row.fieldId,
+                    zoneId: row.zoneId,
+                    fieldName: row.fieldName,
+                    areaM2: row.areaM2,
+                    soilType: row.soilType,
+                    notes: row.fieldNotes,
+                    createdAt: row.fieldCreatedAt
+                }
+            }));
+
+            res.json(formatted);
+        });
+
+        return;
+    }
+
     const query = `
         SELECT
             cp.cropPlantingId,
@@ -959,6 +1279,78 @@ app.get('/api/crops/plantings', (req: Request, res: Response) => {
         ORDER BY cp.plantedDate DESC
     `;
     db.query(query, (err: any, results: any) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
+
+
+// ---------- GET: Sensor Readings for a Zone ----------
+app.get('/api/crops/sensors', (req: Request, res: Response) => {
+    const zoneId = Number(req.query.zoneId);
+    const hoursParam = req.query.hours ?? 24;
+    const hours = Number(hoursParam);
+
+    if (!Number.isInteger(zoneId)) {
+        return res.status(400).json({ error: 'zoneId is required and must be an integer' });
+    }
+
+    if (!Number.isInteger(hours) || hours <= 0) {
+        return res.status(400).json({ error: 'hours must be a positive integer' });
+    }
+
+    const query = `
+        SELECT
+            csr.cropSensorReadingId,
+            csr.plantingId,
+            csr.deviceId,
+            csr.sensorType,
+            csr.value1,
+            csr.value2,
+            csr.value3,
+            csr.takenAt
+        FROM cropSensorReadings csr
+        JOIN cropPlantings cp ON cp.cropPlantingId = csr.plantingId
+        JOIN fields f ON f.fieldId = cp.fieldId
+        WHERE f.zoneId = ?
+          AND csr.takenAt >= DATE_SUB(NOW(), INTERVAL ? HOUR)
+        ORDER BY csr.takenAt DESC
+    `;
+
+    db.query(query, [zoneId, hours], (err: any, results: any) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
+
+
+// ---------- GET: Devices for a Zone ----------
+app.get('/api/devices', (req: Request, res: Response) => {
+    const zoneId = Number(req.query.zoneId);
+
+    if (!Number.isInteger(zoneId)) {
+        return res.status(400).json({ error: 'zoneId is required and must be an integer' });
+    }
+
+    const query = `
+        SELECT
+            deviceId,
+            zoneId,
+            deviceName,
+            deviceType,
+            location,
+            protocol,
+            status,
+            macAddress,
+            firmwareVersion,
+            lastSeen,
+            notes
+        FROM devices
+        WHERE zoneId = ?
+        ORDER BY deviceName ASC
+    `;
+
+    db.query(query, [zoneId], (err: any, results: any) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(results);
     });
@@ -1209,24 +1601,39 @@ app.get('/api/crops/sensors/types', (req: Request, res: Response) => {
 // ==========================================================
 app.get('/api/crops/sensors/latest', (req: Request, res: Response) => {
 
-    const { fieldId } = req.query;
+    const fieldId = Number(req.query.fieldId);
+
+    if (!Number.isInteger(fieldId)) {
+        return res.status(400).json({ error: 'fieldId is required and must be an integer' });
+    }
 
     const query = `
-        SELECT t1.*
-        FROM cropSensorReadings t1
-        INNER JOIN (
-            SELECT sensorType, MAX(recordedAt) AS latest
-            FROM cropSensorReadings
-            WHERE fieldId = ?
-            GROUP BY sensorType
-        ) t2
-        ON t1.sensorType = t2.sensorType
-        AND t1.recordedAt = t2.latest
-        WHERE t1.fieldId = ?
-        ORDER BY t1.sensorType ASC
+        SELECT
+            csr.cropSensorReadingId,
+            cp.fieldId,
+            csr.plantingId,
+            csr.deviceId,
+            csr.sensorType,
+            csr.value1,
+            csr.value2,
+            csr.value3,
+            csr.takenAt
+        FROM cropSensorReadings csr
+        JOIN cropPlantings cp ON cp.cropPlantingId = csr.plantingId
+        WHERE cp.fieldId = ?
+          AND csr.cropSensorReadingId = (
+              SELECT csr2.cropSensorReadingId
+              FROM cropSensorReadings csr2
+              JOIN cropPlantings cp2 ON cp2.cropPlantingId = csr2.plantingId
+              WHERE cp2.fieldId = cp.fieldId
+                AND csr2.sensorType = csr.sensorType
+              ORDER BY csr2.takenAt DESC, csr2.cropSensorReadingId DESC
+              LIMIT 1
+          )
+        ORDER BY csr.sensorType ASC
     `;
 
-    db.query(query, [fieldId, fieldId], (err: any, results: any) => {
+    db.query(query, [fieldId], (err: any, results: any) => {
 
         if (err) {
             console.error('Latest sensors error:', err.message);
@@ -1234,9 +1641,18 @@ app.get('/api/crops/sensors/latest', (req: Request, res: Response) => {
         }
 
         const formatted = results.map((row: any) => ({
+            cropSensorReadingId: row.cropSensorReadingId,
+            readingId: row.cropSensorReadingId,
+            fieldId: row.fieldId,
+            plantingId: row.plantingId,
+            deviceId: row.deviceId,
             sensorType: row.sensorType,
-            value: row.sensorValue,
-            recordedAt: row.recordedAt
+            value: row.value1,
+            value1: row.value1,
+            value2: row.value2,
+            value3: row.value3,
+            takenAt: row.takenAt,
+            recordedAt: row.takenAt
         }));
 
         res.json(formatted);
@@ -1255,6 +1671,16 @@ app.get('/api/crops/sensors/live', (req: Request, res: Response) => {
         range = '1h'
     } = req.query;
 
+    const numericFieldId = Number(fieldId);
+
+    if (!Number.isInteger(numericFieldId)) {
+        return res.status(400).json({ error: 'fieldId is required and must be an integer' });
+    }
+
+    if (typeof sensorType !== 'string' || sensorType.trim() === '') {
+        return res.status(400).json({ error: 'sensorType is required' });
+    }
+
     let interval = '1 HOUR';
 
     if (range === '6h') interval = '6 HOUR';
@@ -1263,16 +1689,23 @@ app.get('/api/crops/sensors/live', (req: Request, res: Response) => {
 
     const query = `
         SELECT
-            recordedAt,
-            sensorValue
-        FROM cropSensorReadings
-        WHERE fieldId = ?
-        AND sensorType = ?
-        AND recordedAt >= NOW() - INTERVAL ${interval}
-        ORDER BY recordedAt ASC
+            csr.cropSensorReadingId,
+            cp.fieldId,
+            csr.plantingId,
+            csr.deviceId,
+            csr.takenAt,
+            csr.value1,
+            csr.value2,
+            csr.value3
+        FROM cropSensorReadings csr
+        JOIN cropPlantings cp ON cp.cropPlantingId = csr.plantingId
+        WHERE cp.fieldId = ?
+          AND csr.sensorType = ?
+          AND csr.takenAt >= NOW() - INTERVAL ${interval}
+        ORDER BY csr.takenAt ASC
     `;
 
-    db.query(query, [fieldId, sensorType], (err: any, results: any) => {
+    db.query(query, [numericFieldId, sensorType], (err: any, results: any) => {
 
         if (err) {
             console.error('Live sensor error:', err.message);
@@ -1280,8 +1713,18 @@ app.get('/api/crops/sensors/live', (req: Request, res: Response) => {
         }
 
         const formatted = results.map((row: any) => ({
-            time: new Date(row.recordedAt).toLocaleTimeString(),
-            value: Number(row.sensorValue)
+            cropSensorReadingId: row.cropSensorReadingId,
+            readingId: row.cropSensorReadingId,
+            fieldId: row.fieldId,
+            plantingId: row.plantingId,
+            deviceId: row.deviceId,
+            time: new Date(row.takenAt).toLocaleTimeString(),
+            value: Number(row.value1),
+            value1: Number(row.value1),
+            value2: row.value2 === null ? null : Number(row.value2),
+            value3: row.value3 === null ? null : Number(row.value3),
+            takenAt: row.takenAt,
+            recordedAt: row.takenAt
         }));
 
         res.json(formatted);
@@ -1301,24 +1744,39 @@ app.get('/api/crops/sensors/history', (req: Request, res: Response) => {
         offset = 0
     } = req.query;
 
+    const numericFieldId = Number(fieldId);
+
+    if (!Number.isInteger(numericFieldId)) {
+        return res.status(400).json({ error: 'fieldId is required and must be an integer' });
+    }
+
+    if (typeof sensorType !== 'string' || sensorType.trim() === '') {
+        return res.status(400).json({ error: 'sensorType is required' });
+    }
+
     const query = `
         SELECT
-            readingId,
-            fieldId,
-            sensorType,
-            sensorValue,
-            recordedAt
-        FROM cropSensorReadings
-        WHERE fieldId = ?
-        AND sensorType = ?
-        ORDER BY recordedAt DESC
+            csr.cropSensorReadingId,
+            cp.fieldId,
+            csr.plantingId,
+            csr.deviceId,
+            csr.sensorType,
+            csr.value1,
+            csr.value2,
+            csr.value3,
+            csr.takenAt
+        FROM cropSensorReadings csr
+        JOIN cropPlantings cp ON cp.cropPlantingId = csr.plantingId
+        WHERE cp.fieldId = ?
+          AND csr.sensorType = ?
+        ORDER BY csr.takenAt DESC
         LIMIT ? OFFSET ?
     `;
 
     db.query(
         query,
         [
-            fieldId,
+            numericFieldId,
             sensorType,
             Number(limit),
             Number(offset)
@@ -1330,7 +1788,22 @@ app.get('/api/crops/sensors/history', (req: Request, res: Response) => {
                 return res.status(500).json({ error: err.message });
             }
 
-            res.json(results);
+            res.json(
+                results.map((row: any) => ({
+                    cropSensorReadingId: row.cropSensorReadingId,
+                    readingId: row.cropSensorReadingId,
+                    fieldId: row.fieldId,
+                    plantingId: row.plantingId,
+                    deviceId: row.deviceId,
+                    sensorType: row.sensorType,
+                    sensorValue: row.value1,
+                    value1: row.value1,
+                    value2: row.value2,
+                    value3: row.value3,
+                    takenAt: row.takenAt,
+                    recordedAt: row.takenAt
+                }))
+            );
         }
     );
 });
@@ -1341,22 +1814,38 @@ app.get('/api/crops/sensors/history', (req: Request, res: Response) => {
 // ==========================================================
 app.get('/api/crops/sensors/summary', (req: Request, res: Response) => {
 
-    const { fieldId } = req.query;
+    const fieldIdParam = req.query.fieldId;
+    const fieldId = fieldIdParam === undefined ? null : Number(fieldIdParam);
+
+    if (fieldIdParam !== undefined && !Number.isInteger(fieldId)) {
+        return res.status(400).json({ error: 'fieldId must be an integer' });
+    }
 
     const query = `
         SELECT
-            sensorType,
-            AVG(sensorValue) AS averageValue,
-            MIN(sensorValue) AS minValue,
-            MAX(sensorValue) AS maxValue
-        FROM cropSensorReadings
-        WHERE fieldId = ?
-        AND recordedAt >= NOW() - INTERVAL 24 HOUR
-        GROUP BY sensorType
-        ORDER BY sensorType ASC
+            fz.zoneName,
+            csr.sensorType,
+            ROUND(AVG(csr.value1), 4) AS avgValue1,
+            ROUND(AVG(csr.value2), 4) AS avgValue2,
+            ROUND(AVG(csr.value3), 4) AS avgValue3,
+            ROUND(MIN(csr.value1), 4) AS minValue1,
+            ROUND(MIN(csr.value2), 4) AS minValue2,
+            ROUND(MIN(csr.value3), 4) AS minValue3,
+            ROUND(MAX(csr.value1), 4) AS maxValue1,
+            ROUND(MAX(csr.value2), 4) AS maxValue2,
+            ROUND(MAX(csr.value3), 4) AS maxValue3,
+            COUNT(*) AS readingCount
+        FROM cropSensorReadings csr
+        JOIN cropPlantings cp ON cp.cropPlantingId = csr.plantingId
+        JOIN fields f ON f.fieldId = cp.fieldId
+        LEFT JOIN farmZones fz ON fz.farmZoneId = f.zoneId
+        WHERE csr.takenAt >= NOW() - INTERVAL 24 HOUR
+        ${fieldId !== null ? 'AND f.fieldId = ?' : ''}
+        GROUP BY fz.zoneName, csr.sensorType
+        ORDER BY fz.zoneName ASC, csr.sensorType ASC
     `;
 
-    db.query(query, [fieldId], (err: any, results: any) => {
+    db.query(query, fieldId !== null ? [fieldId] : [], (err: any, results: any) => {
 
         if (err) {
             console.error('Sensor summary error:', err.message);
@@ -1364,10 +1853,21 @@ app.get('/api/crops/sensors/summary', (req: Request, res: Response) => {
         }
 
         const formatted = results.map((row: any) => ({
+            zoneName: row.zoneName,
             sensorType: row.sensorType,
-            average: Number(row.averageValue),
-            min: Number(row.minValue),
-            max: Number(row.maxValue)
+            avgValue1: row.avgValue1,
+            avgValue2: row.avgValue2,
+            avgValue3: row.avgValue3,
+            minValue1: row.minValue1,
+            minValue2: row.minValue2,
+            minValue3: row.minValue3,
+            maxValue1: row.maxValue1,
+            maxValue2: row.maxValue2,
+            maxValue3: row.maxValue3,
+            readingCount: Number(row.readingCount),
+            average: row.avgValue1,
+            min: row.minValue1,
+            max: row.maxValue1
         }));
 
         res.json(formatted);
@@ -1381,38 +1881,53 @@ app.get('/api/crops/sensors/summary', (req: Request, res: Response) => {
 app.post('/api/crops/sensors', (req: Request, res: Response) => {
 
     const {
-        fieldId,
+        plantingId,
+        deviceId,
         sensorType,
-        sensorValue
+        sensorValue,
+        value1,
+        value2,
+        value3,
+        takenAt
     } = req.body;
 
+    const primaryValue = value1 ?? sensorValue;
+
     if (
-        !fieldId ||
+        !plantingId ||
+        !deviceId ||
         !sensorType ||
-        sensorValue === undefined
+        (primaryValue === undefined && value2 === undefined && value3 === undefined)
     ) {
         return res.status(400).json({
-            error: 'Missing required fields'
+            error: 'plantingId, deviceId, sensorType, and at least one sensor value are required'
         });
     }
 
     const query = `
         INSERT INTO cropSensorReadings
         (
-            fieldId,
+            plantingId,
+            deviceId,
             sensorType,
-            sensorValue,
-            recordedAt
+            value1,
+            value2,
+            value3,
+            takenAt
         )
-        VALUES (?, ?, ?, NOW())
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
     db.query(
         query,
         [
-            fieldId,
+            plantingId,
+            deviceId,
             sensorType,
-            sensorValue
+            primaryValue ?? null,
+            value2 ?? null,
+            value3 ?? null,
+            takenAt ?? new Date()
         ],
         (err: any, result: any) => {
 
@@ -1423,6 +1938,7 @@ app.post('/api/crops/sensors', (req: Request, res: Response) => {
 
             res.json({
                 message: 'Sensor reading recorded',
+                cropSensorReadingId: result.insertId,
                 id: result.insertId
             });
         }
