@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import { fetchWeatherApi } from "openmeteo";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import type { LucideIcon } from "lucide-react";
 import { 
   Cloud, 
   Droplets, 
@@ -44,6 +46,23 @@ interface WaterStatusData {
   latestTakenAt: string | null;
 }
 
+interface CurrentWeatherData {
+  temperature: number;
+  condition: string;
+  humidity: number;
+  windSpeed: number;
+  precipitation: number;
+  icon: LucideIcon;
+}
+
+interface ForecastDay {
+  day: string;
+  high: number;
+  low: number;
+  condition: string;
+  icon: LucideIcon;
+}
+
 interface DeviceRow {
   deviceName: string;
   protocol: string;
@@ -55,11 +74,94 @@ interface DeviceRow {
 
 // Base URL so you only need to change it in one place
 const API = "http://localhost:5000";
+const WEATHER_API = "https://api.open-meteo.com/v1/forecast";
+const BELA_BELA_COORDS = {
+  latitude: -24.885,
+  longitude: 28.294,
+};
+const WEATHER_REFRESH_MS = 15 * 60_000;
 
 async function fetchJson<T>(path: string): Promise<T> {
   const res = await fetch(`${API}${path}`);
   if (!res.ok) throw new Error(`${path} → ${res.status}`);
   return res.json() as Promise<T>;
+}
+
+const range = (start: number, stop: number, step: number) =>
+  Array.from({ length: (stop - start) / step }, (_, index) => start + index * step);
+
+function getWeatherPresentation(weatherCode: number): { condition: string; icon: LucideIcon } {
+  if ([0, 1].includes(weatherCode)) {
+    return { condition: weatherCode === 0 ? "Clear" : "Mostly Clear", icon: Sun };
+  }
+
+  if ([2, 3, 45, 48].includes(weatherCode)) {
+    return { condition: weatherCode === 2 ? "Partly Cloudy" : weatherCode === 3 ? "Overcast" : "Foggy", icon: Cloud };
+  }
+
+  if ([95, 96, 99].includes(weatherCode)) {
+    return { condition: "Thunderstorm", icon: AlertTriangle };
+  }
+
+  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 71, 73, 75, 77, 80, 81, 82, 85, 86].includes(weatherCode)) {
+    return { condition: "Rain", icon: CloudRain };
+  }
+
+  return { condition: "Cloudy", icon: Cloud };
+}
+
+async function fetchWeather(): Promise<{ currentWeather: CurrentWeatherData; forecast: ForecastDay[] }> {
+  const responses = await fetchWeatherApi(WEATHER_API, {
+    latitude: BELA_BELA_COORDS.latitude,
+    longitude: BELA_BELA_COORDS.longitude,
+    current: "temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation_probability,weather_code",
+    daily: "weather_code,temperature_2m_max,temperature_2m_min",
+    forecast_days: 5,
+    timezone: "Africa/Johannesburg",
+  });
+
+  const response = responses[0];
+  const current = response?.current();
+  const daily = response?.daily();
+
+  if (!response || !current || !daily) {
+    throw new Error("Weather data unavailable");
+  }
+
+  const utcOffsetSeconds = response.utcOffsetSeconds();
+  const dailyTimes = range(Number(daily.time()), Number(daily.timeEnd()), daily.interval())
+    .map((timestamp) => new Date((timestamp + utcOffsetSeconds) * 1000))
+    .slice(1, 5);
+  const dailyCodes = Array.from(daily.variables(0)?.valuesArray() ?? []).slice(1, 5);
+  const dailyHighs = Array.from(daily.variables(1)?.valuesArray() ?? []).slice(1, 5);
+  const dailyLows = Array.from(daily.variables(2)?.valuesArray() ?? []).slice(1, 5);
+  const forecastLength = Math.min(dailyTimes.length, dailyCodes.length, dailyHighs.length, dailyLows.length);
+
+  const currentWeatherCode = Number(current.variables(4)?.value() ?? 0);
+  const currentPresentation = getWeatherPresentation(currentWeatherCode);
+
+  return {
+    currentWeather: {
+      temperature: Math.round(Number(current.variables(0)?.value() ?? 0)),
+      condition: currentPresentation.condition,
+      humidity: Math.round(Number(current.variables(1)?.value() ?? 0)),
+      windSpeed: Math.round(Number(current.variables(2)?.value() ?? 0)),
+      precipitation: Math.round(Number(current.variables(3)?.value() ?? 0)),
+      icon: currentPresentation.icon,
+    },
+    forecast: Array.from({ length: forecastLength }, (_, index) => {
+      const weatherCode = Number(dailyCodes[index] ?? 0);
+      const presentation = getWeatherPresentation(weatherCode);
+
+      return {
+        day: dailyTimes[index].toLocaleDateString("en-ZA", { weekday: "short" }),
+        high: Math.round(Number(dailyHighs[index] ?? 0)),
+        low: Math.round(Number(dailyLows[index] ?? 0)),
+        condition: presentation.condition,
+        icon: presentation.icon,
+      };
+    }),
+  };
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -70,9 +172,13 @@ export function Dashboard() {
   const [powerData, setPowerData] = useState<PowerChartPoint[]>([]);
   const [waterData, setWaterData] = useState<WaterChartPoint[]>([]);
   const [waterStatus, setWaterStatus] = useState<WaterStatusData | null>(null);
+  const [currentWeather, setCurrentWeather] = useState<CurrentWeatherData | null>(null);
+  const [forecast, setForecast] = useState<ForecastDay[]>([]);
   const [devices, setDevices] = useState<DeviceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(true);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
 
   // ── Fetch on mount (and refresh every 60 s) ────────────────────────────────
   useEffect(() => {
@@ -108,6 +214,30 @@ export function Dashboard() {
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadWeather() {
+      try {
+        const weather = await fetchWeather();
+
+        if (!cancelled) {
+          setCurrentWeather(weather.currentWeather);
+          setForecast(weather.forecast);
+          setWeatherError(null);
+        }
+      } catch (e: any) {
+        if (!cancelled) setWeatherError(e.message ?? "Failed to load weather data");
+      } finally {
+        if (!cancelled) setWeatherLoading(false);
+      }
+    }
+
+    loadWeather();
+    const interval = setInterval(loadWeather, WEATHER_REFRESH_MS);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
   // ── Derived values ──────────────────────────────────────────────────────────
   const onlineCount   = devices.filter(d => d.status === "online").length;
   const totalLoRa     = devices.length;
@@ -132,22 +262,14 @@ export function Dashboard() {
         ? { label: "Medium", cls: "bg-yellow-50 text-yellow-700 border-yellow-200" }
         : { label: "Good",   cls: "bg-green-50 text-green-700 border-green-200" };
 
-  // ── Static weather data (unchanged — still hardcoded) ──────────────────────
-  const currentWeather = {
-    temperature: 28,
-    condition: "Partly Cloudy",
-    humidity: 45,
-    windSpeed: 12,
-    precipitation: 10,
-    icon: Sun,
-  };
-
-  const forecast = [
-    { day: "Tue", high: 29, low: 18, condition: "Sunny",  icon: Sun },
-    { day: "Wed", high: 27, low: 16, condition: "Cloudy", icon: Cloud },
-    { day: "Thu", high: 25, low: 15, condition: "Rain",   icon: CloudRain },
-    { day: "Fri", high: 28, low: 17, condition: "Sunny",  icon: Sun },
-  ];
+  const CurrentWeatherIcon = currentWeather?.icon ?? Cloud;
+  const currentWeatherDescription = currentWeather?.condition
+    ?? (weatherLoading ? "Loading weather data" : weatherError ? "Unable to load weather data" : "Live weather data");
+  const forecastDescription = weatherLoading && forecast.length === 0
+    ? "Loading forecast"
+    : weatherError && forecast.length === 0
+      ? "Unable to load forecast data"
+      : "Upcoming weather";
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -177,31 +299,31 @@ export function Dashboard() {
           <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <currentWeather.icon className="w-5 h-5 text-yellow-500" />
+                <CurrentWeatherIcon className="w-5 h-5 text-yellow-500" />
                 Current Conditions
               </CardTitle>
-              <CardDescription>Live weather data</CardDescription>
+              <CardDescription>{currentWeatherDescription}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="text-center">
                   <Thermometer className="w-8 h-8 text-red-500 mx-auto mb-2" />
-                  <div className="text-3xl font-bold text-slate-900">{currentWeather.temperature}°C</div>
+                  <div className="text-3xl font-bold text-slate-900">{currentWeather ? `${currentWeather.temperature}°C` : "—"}</div>
                   <div className="text-sm text-slate-600">Temperature</div>
                 </div>
                 <div className="text-center">
                   <Droplets className="w-8 h-8 text-blue-500 mx-auto mb-2" />
-                  <div className="text-3xl font-bold text-slate-900">{currentWeather.humidity}%</div>
+                  <div className="text-3xl font-bold text-slate-900">{currentWeather ? `${currentWeather.humidity}%` : "—"}</div>
                   <div className="text-sm text-slate-600">Humidity</div>
                 </div>
                 <div className="text-center">
                   <Wind className="w-8 h-8 text-slate-500 mx-auto mb-2" />
-                  <div className="text-3xl font-bold text-slate-900">{currentWeather.windSpeed}</div>
+                  <div className="text-3xl font-bold text-slate-900">{currentWeather ? currentWeather.windSpeed : "—"}</div>
                   <div className="text-sm text-slate-600">Wind (km/h)</div>
                 </div>
                 <div className="text-center">
                   <Cloud className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                  <div className="text-3xl font-bold text-slate-900">{currentWeather.precipitation}%</div>
+                  <div className="text-3xl font-bold text-slate-900">{currentWeather ? `${currentWeather.precipitation}%` : "—"}</div>
                   <div className="text-sm text-slate-600">Rain Chance</div>
                 </div>
               </div>
@@ -211,26 +333,34 @@ export function Dashboard() {
           <Card>
             <CardHeader>
               <CardTitle>4-Day Forecast</CardTitle>
-              <CardDescription>Upcoming weather</CardDescription>
+              <CardDescription>{forecastDescription}</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {forecast.map((day) => {
-                  const Icon = day.icon;
-                  return (
-                    <div key={day.day} className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Icon className="w-5 h-5 text-slate-600" />
-                        <span className="font-medium text-slate-900">{day.day}</span>
+              {weatherLoading && forecast.length === 0 ? (
+                <div className="text-sm text-slate-500">Loading forecast…</div>
+              ) : forecast.length === 0 ? (
+                <div className="text-sm text-slate-500">
+                  {weatherError ? "Unable to load forecast data." : "No forecast data available."}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {forecast.map((day) => {
+                    const Icon = day.icon;
+                    return (
+                      <div key={day.day} className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Icon className="w-5 h-5 text-slate-600" />
+                          <span className="font-medium text-slate-900">{day.day}</span>
+                        </div>
+                        <div className="text-sm">
+                          <span className="font-bold text-slate-900">{day.high}°</span>
+                          <span className="text-slate-500 ml-1">{day.low}°</span>
+                        </div>
                       </div>
-                      <div className="text-sm">
-                        <span className="font-bold text-slate-900">{day.high}°</span>
-                        <span className="text-slate-500 ml-1">{day.low}°</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
