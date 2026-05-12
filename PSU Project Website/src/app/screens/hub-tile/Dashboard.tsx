@@ -37,6 +37,13 @@ interface WaterChartPoint {
   level: number;
 }
 
+interface WaterStatusData {
+  deviceCount: number;
+  totalDepthCm: number;
+  averageDepthCm: number;
+  latestTakenAt: string | null;
+}
+
 interface DeviceRow {
   deviceName: string;
   protocol: string;
@@ -62,6 +69,7 @@ export function Dashboard() {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [powerData, setPowerData] = useState<PowerChartPoint[]>([]);
   const [waterData, setWaterData] = useState<WaterChartPoint[]>([]);
+  const [waterStatus, setWaterStatus] = useState<WaterStatusData | null>(null);
   const [devices, setDevices] = useState<DeviceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -72,10 +80,11 @@ export function Dashboard() {
 
     async function load() {
       try {
-        const [sum, power, water, devs] = await Promise.all([
+        const [sum, power, water, waterStatusData, devs] = await Promise.all([
           fetchJson<SummaryData>("/api/dashboard/summary"),
           fetchJson<PowerChartPoint[]>("/api/dashboard/power-chart"),
           fetchJson<WaterChartPoint[]>("/api/dashboard/water-chart"),
+          fetchJson<WaterStatusData>("/api/dashboard/water-status"),
           fetchJson<DeviceRow[]>("/api/dashboard/devices"),
         ]);
 
@@ -83,6 +92,7 @@ export function Dashboard() {
           setSummary(sum);
           setPowerData(power);
           setWaterData(water);
+          setWaterStatus(waterStatusData);
           setDevices(devs);
           setError(null);
         }
@@ -103,8 +113,14 @@ export function Dashboard() {
   const totalLoRa     = devices.length;
 
   // Latest water level for the alert badge
-  const latestWaterLevel = waterData.length > 0
-    ? waterData[waterData.length - 1].level
+  const latestWaterLevel = waterStatus && waterStatus.deviceCount > 0
+    ? waterStatus.averageDepthCm
+    : waterData.length > 0
+      ? waterData[waterData.length - 1].level
+      : null;
+
+  const latestWaterStatusAt = waterStatus?.latestTakenAt
+    ? new Date(waterStatus.latestTakenAt).toLocaleString()
     : null;
 
   // Water status label
@@ -259,14 +275,14 @@ export function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-slate-600">Reservoir Level</span>
+                <span className="text-slate-600">Water Remaining</span>
                 <Badge variant="outline" className={waterBadge.cls}>
                   {waterBadge.label}
                 </Badge>
               </div>
               <p className="text-sm text-slate-600 mb-4">
-                {latestWaterLevel !== null
-                  ? `Latest sensor reading: ${latestWaterLevel.toFixed(1)} cm depth. Borehole backup available.`
+                {waterStatus && waterStatus.deviceCount > 0
+                  ? `Latest total across ${waterStatus.deviceCount} water ${waterStatus.deviceCount === 1 ? "node" : "nodes"}: ${waterStatus.totalDepthCm.toFixed(1)} cm depth${latestWaterStatusAt ? `. Last update: ${latestWaterStatusAt}.` : "."}`
                   : "No water sensor readings yet."}
               </p>
               {latestWaterLevel !== null && latestWaterLevel < 70 && (
@@ -291,6 +307,8 @@ export function Dashboard() {
           <CardContent>
             {loading ? (
               <div className="h-[250px] flex items-center justify-center text-slate-400">Loading…</div>
+            ) : error && powerData.length === 0 ? (
+              <div className="h-[250px] flex items-center justify-center text-slate-400">Unable to load power data</div>
             ) : powerData.length === 0 ? (
               <div className="h-[250px] flex items-center justify-center text-slate-400">No power data yet</div>
             ) : (
@@ -328,11 +346,13 @@ export function Dashboard() {
         <Card>
           <CardHeader>
             <CardTitle>Water Sensor Depth (24h)</CardTitle>
-            <CardDescription>Average depth reading across all water nodes</CardDescription>
+            <CardDescription>Average depth reading across the latest 24 hours of available water sensor data</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
               <div className="h-[250px] flex items-center justify-center text-slate-400">Loading…</div>
+            ) : error && waterData.length === 0 ? (
+              <div className="h-[250px] flex items-center justify-center text-slate-400">Unable to load water data</div>
             ) : waterData.length === 0 ? (
               <div className="h-[250px] flex items-center justify-center text-slate-400">No water data yet</div>
             ) : (

@@ -209,7 +209,7 @@ app.get('/api/dashboard/power-chart', (req: Request, res: Response) => {
   const usageQuery = `
     SELECT
       DATE_FORMAT(takenAt, '%H:00') AS time,
-      AVG(powerUsageKw)             AS usage
+            AVG(powerUsageKw)             AS usageKw
     FROM powerOutputLogs
     WHERE takenAt >= NOW() - INTERVAL 24 HOUR
     GROUP BY DATE_FORMAT(takenAt, '%H:00')
@@ -239,9 +239,9 @@ app.get('/api/dashboard/power-chart', (req: Request, res: Response) => {
       }
       for (const row of usageRows) {
         if (map[row.time]) {
-          map[row.time].usage = Number(row.usage) || 0;
+                    map[row.time].usage = Number(row.usageKw) || 0;
         } else {
-          map[row.time] = { time: row.time, generation: 0, usage: Number(row.usage) || 0 };
+                    map[row.time] = { time: row.time, generation: 0, usage: Number(row.usageKw) || 0 };
         }
       }
  
@@ -259,12 +259,16 @@ app.get('/api/dashboard/power-chart', (req: Request, res: Response) => {
 app.get('/api/dashboard/water-chart', (req: Request, res: Response) => {
   const query = `
     SELECT
-      DATE_FORMAT(takenAt, '%H:00') AS time,
-      AVG(depthLevelCm)             AS level
+            DATE_FORMAT(takenAt, '%m-%d %H:00') AS time,
+            DATE_FORMAT(takenAt, '%Y-%m-%d %H:00:00') AS sortKey,
+            AVG(depthLevelCm)                   AS level
     FROM waterSensorReadings
-    WHERE takenAt >= NOW() - INTERVAL 24 HOUR
-    GROUP BY DATE_FORMAT(takenAt, '%H:00')
-    ORDER BY DATE_FORMAT(takenAt, '%H:00') ASC
+        WHERE takenAt >= (
+            SELECT DATE_SUB(MAX(takenAt), INTERVAL 24 HOUR)
+            FROM waterSensorReadings
+        )
+        GROUP BY sortKey, time
+        ORDER BY sortKey ASC
   `;
  
   db.query(query, (err: Error | null, results: any) => {
@@ -277,6 +281,46 @@ app.get('/api/dashboard/water-chart', (req: Request, res: Response) => {
  
     res.json(formatted);
   });
+});
+
+//displays the total water level, how many nodes are connected, and when the last update occured
+app.get('/api/dashboard/water-status', (req: Request, res: Response) => {
+    const query = `
+        SELECT
+            COUNT(*)                  AS deviceCount,
+            SUM(latest.depthLevelCm)  AS totalDepthCm,
+            AVG(latest.depthLevelCm)  AS averageDepthCm,
+            MAX(latest.takenAt)       AS latestTakenAt
+        FROM (
+            SELECT
+                readings.deviceId,
+                readings.depthLevelCm,
+                readings.takenAt
+            FROM waterSensorReadings readings
+            INNER JOIN (
+                SELECT
+                    deviceId,
+                    MAX(takenAt) AS latestTakenAt
+                FROM waterSensorReadings
+                GROUP BY deviceId
+            ) groupedLatest
+                ON groupedLatest.deviceId = readings.deviceId
+             AND groupedLatest.latestTakenAt = readings.takenAt
+        ) latest
+    `;
+
+    db.query(query, (err: Error | null, results: any) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        const row = results[0] ?? {};
+
+        res.json({
+            deviceCount: Number(row.deviceCount) || 0,
+            totalDepthCm: Number(row.totalDepthCm) || 0,
+            averageDepthCm: Number(row.averageDepthCm) || 0,
+            latestTakenAt: row.latestTakenAt ?? null
+        });
+    });
 });
 
 //checks the status of all devices connected to calculate health
